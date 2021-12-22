@@ -3,8 +3,8 @@
 Repo for BERT implementation of "Retrofitting Contextualized Word Embeddings with Paraphrases" [[1]](#1) and further improvement of BERT robustness.
 
 ## Forthcoming Contributions
-1. retrofitted-BERT in PyTorch
-2. experiments to test rf-BERT robustness under different attacks
+1. Retrofitted-BERT in PyTorch
+2. Experiments to test rf-BERT robustness under various adversarial attacks
 
 
 

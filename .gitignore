@@ -1,3 +1,9 @@
+# Additional
+*.lnk
+*.docx
+retrofitting_outline.py
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

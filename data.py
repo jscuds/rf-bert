@@ -83,7 +83,7 @@ class ParaDataset(Dataset):
         token2 = self._para_tuples[idx][3]
         ntoken1 = neg_tuple[2]
         ntoken2 = neg_tuple[3]
-        return sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2
+        return torch.tensor(sent1), torch.tensor(sent2), torch.tensor(nsent1), torch.tensor(nsent2), token1, token2, ntoken1, ntoken2
     
     # TODO add MRPC, PAN...
     def _load_dataset(self):
@@ -198,10 +198,6 @@ class ParaDataset(Dataset):
             #### PRINT STATEMENTS FOR TESTING ####
 
 
-            # final step is to convert to tensors for batching/training:
-            self._para_tuples, self._neg_tuples = torch.tensor(self._para_tuples), torch.tensor(self._neg_tuples)
-
-
     def _overlap(self, s1: List[int], s2: List[int]) -> List[List[int]]:
         """ 
         Finds overlapping non-stopwords of two sentences and returns the words' index in each sentence
@@ -240,12 +236,12 @@ class ParaDataset(Dataset):
         Corrupt para_tuple into a negative sample. 
         Return (sent_id, sent_id, index_of_an_overlapping/synonym_token, index_of_an_overlapping/synonym_token) for a negative sample.
         """
-
-        s1_id = para_tuple[0]                  #js assigns appropriate variable to the elements of `para_tuple = (s1_idx, s2_idx, s1_overlap_word_index, s2_overlap_word_idx)`
+        
+        #js assigns appropriate variable to the elements of `para_tuple = (s1_idx, s2_idx, s1_overlap_word_index, s2_overlap_word_idx)`
+        s1_id = para_tuple[0]  
         s1_index = para_tuple[2]
         s2_id = para_tuple[1]
         s2_index = para_tuple[3]
-   
         #js randomly 1 or 2 to pick whether or 'corrupt' s1_id or s2_id
         if target_sent == None:                     
             target_sent = random.randint(1,2)
@@ -340,7 +336,7 @@ class ParaDataset(Dataset):
         tmp_dict = pickle.load(f)
         self.__dict__.update(tmp_dict)
         print("Loaded data object from", filename)
-        print("===============\nCaution: need to reload desc embeddings.\n=====================")
+        print("=====================\nCaution: need to reload desc embeddings.\n=====================")
 
 
 

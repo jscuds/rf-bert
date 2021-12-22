@@ -32,6 +32,7 @@ print('#### PRINT ATTRIBUTE METRICS FOR TESTING ####')
 
 assert type(quora._para_tuples) == torch.Tensor
 assert type(quora._neg_tuples) == torch.Tensor
+assert len(quora) == len(quora._para_tuples)
 
 # NEED TO CHECK
 # _overlap()

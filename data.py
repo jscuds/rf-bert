@@ -209,7 +209,7 @@ class ParaDataset(Dataset):
         s1_dict = dict((k, i) for i, k in enumerate(s1)) 
         s2_dict = dict((k, i) for i, k in enumerate(s2))
         word_pairs = []
-        inter = set(s1_dict).intersection(set(s2_dict)) #find all the common words between sentences
+        inter = set(s1_dict.keys()).intersection(set(s2_dict.keys())) #find all the common words between sentences
 
         inter.difference_update(self.stop_words_set) #js removes all token_ids of stopwords TO INCLUDE [CLS],[SEP],[PAD]
         #js NOTE: removed ~6 lines of individual filtering                   
@@ -256,16 +256,16 @@ class ParaDataset(Dataset):
         # token_id of ONE OVERLAP WORD; INDEXING: finds s1_id in `_id_to_sent` Tensor, then uses the overlap word index to get the token_id of that word
         #    then using `token`, find all possible sentences with that token: set(sent_id, index_of_token)
         token = self._id_to_sent[target_sent_id][target_sent_index]  
-        sents_list = self._token_to_sents[token] 
+        sents_list = self._token_to_sents[token]  #TODO: use copy.copy()
         
         # remove s1 and s2 out of the set of possible sentences with token
         if (s1_id, s1_index) in sents_list:      
-            sents_list.remove((s1_id, s1_index))
+            sents_list.remove((s1_id, s1_index)) #js TODO: test to see if this modifies the actual self._token_to_sents dictionary
         if (s2_id, s2_index) in sents_list:
             sents_list.remove((s2_id, s2_index))
 
         # if the only overlap was between the two paraphrase sentences; *RANDOMLY RETURN A NEGATIVE TUPLE??* 
-        #   TODO there has to be a better way
+        #   TODO there has to be a better way; should just skip this example then.
         if (len(sents_list) == 0):
             return random.choice(self._neg_tuples)
         else:

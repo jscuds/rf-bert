@@ -1,13 +1,13 @@
 # Globals and Imports
 
-LOCAL = True
+LOCAL = False
 STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
 
 # MODEL_NAME = "bert-base-uncased"
 # MAX_LENGTH = 40
 PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 MODEL_CACHE_DIR = "/mnt/d/huggingface/transformers"
-DATASET_CACHE_DIR = "/mnt/d/huggingface/transformers"
+DATASET_CACHE_DIR = "/mnt/d/huggingface/datasets"
 
 import pickle
 import random
@@ -105,7 +105,7 @@ class ParaDataset(Dataset):
 
             # TODO: Tokenize things beforehand!
             for pair in quora_shuffled['train']:
-                count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
+                #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
                 if count >= self.num_examples:
                     break
                 label = pair['is_duplicate']
@@ -183,7 +183,7 @@ class ParaDataset(Dataset):
                     sid_index = (s2_id, index)
                     self._token_to_sents.setdefault(token_id, set()).add(sid_index)                              
 
-                # count += 1  # TODO count should be incremented here to get 20k examples
+                count += 1  # TODO count should be incremented here to get 20k examples
 
 
             #### PRINT STATEMENTS FOR TESTING ####
@@ -343,3 +343,5 @@ class ParaDataset(Dataset):
 # FURTHER TODO:
 # 1. When finding intersection of words, remove token_ids of '?', '[CLS]', '[SEP]', ... maybe all symbols & punctuation?
 # 2. is_synonym and corrupt_n() not included from Shi's original Data class
+# 3. might need to pass ._para_tuples and ._neg_tuples for testing purposes...that's the only thing linking the q_ids to the actual sentences
+#    in the __getitem__() return.

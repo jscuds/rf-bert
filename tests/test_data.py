@@ -1,15 +1,20 @@
+from pathlib import Path
 import sys
 #import pytest
 import torch
 
-sys.path.append('../')
+# sys.path.append('../')
+cwd = str(Path(__file__).resolve().parent.parent) # goes to top level repo directory of rf-bert/
+print(f'Repo Directory: {cwd}\n') # /n/home03/jscudder/0-repo-rf-bert
+#https://stackoverflow.com/questions/30218802/get-parent-of-current-directory-from-python-script
+sys.path.append(f'{cwd}') 
 
 from data import ParaDataset
 
 # Instantiate ParaDataset class
 
 quora = ParaDataset(para_dataset = 'quora', model_name = 'bert-base-uncased', num_examples = 20000, 
-                    max_length = 40, stop_words_file = '../stop_words_en.txt', r1 =0.5, seed = 42)
+                    max_length = 40, stop_words_file = f'{cwd}/stop_words_en.txt', r1 =0.5, seed = 42)
 
 # check number ._paraphrase_sets; len(DATA_NAME._pararphrase_sets)/2 == 6526 when count is incremented at top and seed = 42
 
@@ -30,9 +35,20 @@ print(f'len(token_to_sents.keys():\t{len(quora._token_to_sents.keys())}')       
 print('#### PRINT ATTRIBUTE METRICS FOR TESTING ####')
 
 
-assert type(quora._para_tuples) == torch.Tensor
-assert type(quora._neg_tuples) == torch.Tensor
+assert type(quora._para_tuples) == list
+assert type(quora._neg_tuples) == list
 assert len(quora) == len(quora._para_tuples)
+
+test_sent1, test_sent2, test_nsent1, test_nsent2, test_token1, test_token2, test_ntoken1, test_ntoken2 = quora[0]
+assert type(test_sent1) == torch.Tensor
+assert type(test_sent2) == torch.Tensor
+assert type(test_nsent1) == torch.Tensor
+assert type(test_nsent2) == torch.Tensor
+assert type(test_token1) == int
+assert type(test_token2) == int
+assert type(test_ntoken1) == int
+assert type(test_ntoken2) == int
+
 
 # NEED TO CHECK
 # _overlap()

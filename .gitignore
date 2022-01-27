@@ -1,7 +1,13 @@
-# Additional
+# Local files and directories
 *.lnk
 *.docx
 retrofitting_outline.py
+
+# Cluster directories and files
+tmpwdir/
+wandb/
+err-out-files/
+*.sbatch
 
 
 # Byte-compiled / optimized / DLL files

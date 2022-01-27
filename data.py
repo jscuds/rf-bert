@@ -9,6 +9,7 @@ PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 MODEL_CACHE_DIR = "/mnt/d/huggingface/transformers"
 DATASET_CACHE_DIR = "/mnt/d/huggingface/datasets"
 
+import copy
 import pickle
 import random
 import re
@@ -190,7 +191,7 @@ class ParaDataset(Dataset):
             #print(f'Total time: {(time.time() - t0):.2f} seconds')
             print('\n#### PRINT STATEMENTS FOR TESTING ####')
             print(f'Total pairs of questions: {len(sentence_id_pair_list)}')
-            print(f'`count` is {count}, should be 20000')
+            print(f'`count` is {count}, should be {self.num_examples}')
             print(f'`bad_count` is {bad_count}')
             print(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(sentence_id_pair_list)*100:.2f}% of total')
             print(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(sentence_id_pair_list)*100:.2f}% of total')
@@ -256,11 +257,11 @@ class ParaDataset(Dataset):
         # token_id of ONE OVERLAP WORD; INDEXING: finds s1_id in `_id_to_sent` Tensor, then uses the overlap word index to get the token_id of that word
         #    then using `token`, find all possible sentences with that token: set(sent_id, index_of_token)
         token = self._id_to_sent[target_sent_id][target_sent_index]  
-        sents_list = self._token_to_sents[token]  #TODO: use copy.copy()
+        sents_list = copy.copy(self._token_to_sents[token])  #TODO: use copy.copy() o/w it modifies the actual self._token_to_sents dictionary
         
         # remove s1 and s2 out of the set of possible sentences with token
         if (s1_id, s1_index) in sents_list:      
-            sents_list.remove((s1_id, s1_index)) #js TODO: test to see if this modifies the actual self._token_to_sents dictionary
+            sents_list.remove((s1_id, s1_index)) 
         if (s2_id, s2_index) in sents_list:
             sents_list.remove((s2_id, s2_index))
 

@@ -1,5 +1,7 @@
 import torch
 
+from allennlp.modules.elmo import Elmo
+
 #########################################################
 ################## ElmoClassifier Class #################
 #########################################################
@@ -10,9 +12,9 @@ WEIGHT_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_51
 
 class ElmoClassifier(torch.nn.Module):
 
-    def __init__(self, num_output_representations: int, requires_grad: bool=True, dropout: float =0):
+    def __init__(self, num_output_representations: int, requires_grad: bool=True, dropout: float=0):
         super().__init__()
-        self.elmo = Elmo(options_file = options_file, weight_file = weight_file, 
+        self.elmo = Elmo(options_file=OPTIONS_FILE, weight_file = WEIGHT_FILE, 
                          num_output_representations = num_output_representations, requires_grad=requires_grad, dropout=dropout)
         self.elmo_hidden_size = self.elmo.get_output_dim()
         self.linear1 = torch.nn.Linear(in_features=self.elmo_hidden_size*3 + 1, out_features=512) #TODO change out_features to 50 for simplicity?
@@ -62,38 +64,38 @@ from typing import Dict, List, Union
 
 from allennlp.modules.elmo import ElmoLstm # , _ElmoBiLm
 
-class ElmoLstmWithTransformation(nn.Module):
+class ElmoLstmWithTransformation(torch.nn.Module):
     """Appends a linear transformation (via inner `M` matrix) to ElmoLstm."""
-  def __init__(self, lstm: ElmoLstm, embedding_dim=512): # embedding_dim matches ElmoLstm default
-    super().__init__()
-    self.lstm = lstm
-    self.M = torch.nn.Parameter(
-        torch.eye(embedding_dim, dtype=torch.float32), requires_grad=True
-    )
-    self.register_parameter('M', self.M) # TODO does this do anything?
+    def __init__(self, lstm: ElmoLstm, embedding_dim=512): # embedding_dim matches ElmoLstm default
+        super().__init__()
+        self.lstm = lstm
+        self.M = torch.nn.Parameter(
+            torch.eye(embedding_dim, dtype=torch.float32), requires_grad=True
+        )
+        self.register_parameter('M', self.M) # TODO does this do anything?
 
-  def forward(self, inputs: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
-    """
-    # Parameters
-    inputs : `torch.Tensor`, required.
-        A Tensor of shape `(batch_size, sequence_length, hidden_size)`.
-    mask : `torch.BoolTensor`, required.
-        A binary mask of shape `(batch_size, sequence_length)` representing the
-        non-padded elements in each sequence in the batch.
-    # Returns
-    `torch.Tensor`
-        A `torch.Tensor` of shape (num_layers, batch_size, sequence_length, hidden_size),
-        where the num_layers dimension represents the LSTM output from that layer.
-    """
-    inputs = torch.matmul(inputs, self.M)
-    return self.lstm(inputs, mask)
+    def forward(self, inputs: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
+        """
+        # Parameters
+        inputs : `torch.Tensor`, required.
+            A Tensor of shape `(batch_size, sequence_length, hidden_size)`.
+        mask : `torch.BoolTensor`, required.
+            A binary mask of shape `(batch_size, sequence_length)` representing the
+            non-padded elements in each sequence in the batch.
+        # Returns
+        `torch.Tensor`
+            A `torch.Tensor` of shape (num_layers, batch_size, sequence_length, hidden_size),
+            where the num_layers dimension represents the LSTM output from that layer.
+        """
+        inputs = torch.matmul(inputs, self.M)
+        return self.lstm(inputs, mask)
       
 
 class ElmoClassifierWithMatrixLayer(torch.nn.Module):
 
-    def __init__(self, options_file: str, weight_file: str, num_output_representations: int=1, dropout: float=0):
+    def __init__(self, num_output_representations: int=1, dropout: float=0):
         super().__init__()
-        self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
+        self.elmo = Elmo(options_file=OPTIONS_FILE, weight_file=WEIGHT_FILE,
                          num_output_representations = num_output_representations,
                          requires_grad=False, dropout=dropout)
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation

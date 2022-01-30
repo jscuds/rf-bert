@@ -1,11 +1,14 @@
 from typing import Tuple
 
 import datasets
+import sklearn.model_selection
 import torch
 
 from allennlp.modules.elmo import batch_to_ids
 
 from torch.utils.data import Dataset
+
+from mosestokenizer import MosesTokenizer
 
 # import allennlp
 
@@ -13,12 +16,10 @@ from torch.utils.data import Dataset
 # from mosestokenizer import MosesTokenizer
 
 class QuoraDataset(Dataset):
-    def __init__(self, para_dataset: str = 'quora', model_name: str = 'ELMo-allennlp', 
-                 num_examples: int = 20000, max_length: int = 40, 
-                 train_size: float = 0.8, test_size: float = 0.2,seed: int = None):
+    def __init__(self, para_dataset: str = 'quora', num_examples: int = 20000, max_length: int = 40, 
+                 train_test_split: float = 0.8, seed: int = None):
         
         self.para_dataset = para_dataset
-        self.model_name = model_name
         self.num_examples = num_examples
         self.max_length = max_length
         self.seed = seed # set to None for random
@@ -30,10 +31,6 @@ class QuoraDataset(Dataset):
         self.s2_tokenized  = [] # lists of sentences of token_ids from s2
         self.labels = [] # list of labels as ints: 0,1
 
-        if CHECK_DUP:
-            self.sent_id_list = []
-            self.dup = 0
-
         #elmo_change
         # https://github.com/luismsgomes/mosestokenizer
         self.tokenizer = MosesTokenizer('en') 
@@ -42,7 +39,7 @@ class QuoraDataset(Dataset):
         # load quora, mrpc, etc.
         print(f'Loading {para_dataset} dataset...\n')
         self._load_dataset()
-        self._train_test_split(train_size, test_size, STRAT)
+        self._train_test_split(train_test_split)
         self.split('train')
 
     def split(self, train_or_test: str = 'train'):
@@ -88,10 +85,6 @@ class QuoraDataset(Dataset):
             
             quora_shuffled = quora.shuffle(seed=self.seed) #js holdover from ParaDataset; ensures if you're using less than total dataset, you are at least shuffling it first.
             count = 0
-            if STRAT:
-                pos_label_count = 0
-                neg_label_count = 0
-                print('STRAT==True')
 
             bad_count = 0              #js added for testing
             sentence_id_pair_list = [] #js added for testing
@@ -117,29 +110,7 @@ class QuoraDataset(Dataset):
                     bad_count += 1  #js added for testing
                     continue # skip pair if it contains element from self.bad_words
 
-                #js experiment 50-50 split
-                if STRAT:
-                    if label:
-                        pos_label_count +=1
-                        if pos_label_count > self.num_examples//2:
-                            continue #if half of examples are positive, go to top of loop to find more negative
-                    else:
-                        neg_label_count +=1
-                        if neg_label_count > self.num_examples//2:
-                            continue #if half of examples of negative, go to top of loop to find more positive
-
                 #js experiment no duplicate questions
-                
-                if CHECK_DUP:
-                    if s1_id in self.sent_id_list:
-                        self.dup += 1
-                        continue #if either sentence is in the set, go to top of loop
-                    elif s2_id in self.sent_id_list:
-                        self.dup += 1
-                        continue
-                    else:  #otherwise add to sent_id_list
-                        self.sent_id_list.append(s1_id) 
-                        self.sent_id_list.append(s2_id)
 
                 #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
                 self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
@@ -194,12 +165,8 @@ class QuoraDataset(Dataset):
 
             # map boolean list of labels to list of 0,1 ints
             self.labels = list(map(int, label_list))
-            if STRAT:
-              print(f'pos_label_count = {pos_label_count}')
-              print(f'neg_label_count = {neg_label_count}')
 
-
-    def _train_test_split(self, train_size: float =0.8, test_size: float = 0.2, strat=False):
+    def _train_test_split(self, train_test_split: float=0.8):
         """
         If called, creates train/test splits of sents/labels.
         """
@@ -215,15 +182,11 @@ class QuoraDataset(Dataset):
             print(f'self.tokenized_sentences.shape: {self.tokenized_sentences.shape}\nintended shape: {(self.num_examples,2,40,50)}')
 
 
-        if strat:
-            self.train_sents, self.test_sents, self.train_labels, self.test_labels = train_test_split(
-                self.tokenized_sentences, self.labels, train_size=train_size, test_size=test_size, 
-                random_state=self.seed, shuffle = True, stratify = self.labels)
-
-        else: 
-            self.train_sents, self.test_sents, self.train_labels, self.test_labels = train_test_split(
-                self.tokenized_sentences, self.labels, train_size=train_size, test_size=test_size, 
+        self.train_sents, self.test_sents, self.train_labels, self.test_labels = (
+            sklearn.model_selection.train_test_split(
+                self.tokenized_sentences, self.labels, train_size=train_test_split, test_size=1-train_test_split, 
                 random_state=self.seed, shuffle = True, stratify = None
             )
+        )
         print(f'Training Size: {len(self.train_sents)}')
         print(f'Testing Size: {len(self.test_sents)}')

@@ -1,0 +1,5 @@
+allennlp
+mosestokenizer
+nltk
+torch
+wandb

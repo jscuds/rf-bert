@@ -11,7 +11,7 @@ import wandb
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from torch.utils.data import DataLoader
 
-from .experiments import FinetuneExperiment, RetrofitExperiment
+from experiment import FinetuneExperiment, RetrofitExperiment
 
 def set_random_seed(r):
     random.seed(r)
@@ -27,41 +27,22 @@ def parse_args() -> argparse.Namespace:
         choices=('retrofit','finetune'))
 
     parser.add_argument('--random_seed', type=int, default=42)
+    parser.add_argument('--epochs', type=int, default=5,
+        help='number of training epochs')
     parser.add_argument('--num_examples', type=int, default=20_000,
-        description='number of training examples')
+        help='number of training examples')
     parser.add_argument('--train_test_split', type=float, default=0.8,
-        description='percent of data to use for train, in (0, 1]')
+        help='percent of data to use for train, in (0, 1]')
 
     parser.add_argument('--model_name_or_path', default='elmo', 
-        choices=['elmo'], description='name of model to use')
+        choices=['elmo'], help='name of model to use')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--drop_last', type=bool, default=False,
-        description='whether to drop remainder of last batch')
+        help='whether to drop remainder of last batch')
 
     args = parser.parse_args()
     set_random_seed(args.random_seed)
-
-    day = time.strftime(f'%Y-%m-%d')
-
-    # NUM_EXAMPLES = 20000 #20000 #100000  404290   #EXP CHANGE 1
-    # EVAL_METHOD = 'GLUE' #base #GLUE
-    # METHOD = f'SIZE_{NUM_EXAMPLES//1000}k_{EVAL_METHOD}' #100k #20k  #full  #50-50  #no-repeat  #filter
-    # TITLE = f'quora-{METHOD}_{day}'
-
-    # MODEL_NAME = 
-    # MAX_LENGTH = 40 #elmo_change # *2 FOR BERT multiply by 2 because now passing two paraphrases together
-
-    # TRAIN_SIZE = 0.8
-    # TEST_SIZE = 0.2
-    # RNDM_SEED = 42
-    # STRAT = False #EXP CHANGE 2
-    # CHECK_DUP = False #EXP CHANGE 3
-
-    # LR = 1e-4
-    # NUM_EPOCHS = 6 # elmo_change
-    # BATCH_SIZE = 512
-    # DROP_LAST = False
     
     return args
 
@@ -75,24 +56,29 @@ def main():
     }[args.experiment]
     experiment = experiment_cls(args)
 
+    model = experiment.model
+
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
 
     # js NOTE: HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
-    quora.split('train')
-    train_quora = copy.copy(quora)
-    train_dataloader = DataLoader(train_quora, batch_size=BATCH_SIZE, shuffle=True, drop_last=DROP_LAST, pin_memory=True)
-    quora.split('test')
-    test_quora = copy.copy(quora)
-    test_dataloader = DataLoader(test_quora, batch_size=BATCH_SIZE, shuffle=True, drop_last=DROP_LAST, pin_memory=True)
+
+    # TODO: refactor this .split() thing, it's not ideal
+    train_dataset = copy.copy(experiment.dataset)
+    test_dataset = copy.copy(experiment.dataset)
+
+    train_dataset.split('train')
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+    test_dataset.split('test')
+    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
 
     print('\n***CHECK DATASET LENGTHS:***')
     print(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
     print(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
 
     print('\n***CHECK self.tokenized_sentences.shape: ')
-    print(f'quora.tokenized_sentences.shape: {quora.tokenized_sentences.shape}\nintended shape: {(quora.num_examples,2,40,50)}')
+    # print(f'quora.tokenized_sentences.shape: {quora.tokenized_sentences.shape}\nintended shape: {(quora.num_examples,2,40,50)}')
 
 
     #########################################################
@@ -101,16 +87,14 @@ def main():
 
 
     # WandB init and config (based on argument dictionaries in imports/globals cell)
+    day = time.strftime(f'%Y-%m-%d')
     wandb.init(
-        name=TITLE,
+        name=f'{args.experiment}_{args.model_name_or_path}_{day}', # TODO: fix/restore TITLE
         project='rf-bert',
         entity='jscuds',
         notes=None,
-        config=dict(args)
+        config=vars(args)
     )
-
-    # def compute_n_correct(preds, targets):
-    #     return torch.sum((torch.sigmoid(preds.squeeze()).round() == targets)).cpu().item()
 
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -118,8 +102,8 @@ def main():
 
     model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    loss_fn = BCEWithLogitsLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    loss_fn = experiment.compute_loss
 
     train_losses = []
     test_losses = []
@@ -134,7 +118,7 @@ def main():
     # TODO: cleanup metric computation
 
     t0 = time.time()
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(args.epochs):
         running_loss = 0
         n_correct = 0
         preds_accum = []
@@ -174,11 +158,11 @@ def main():
 
         t1 = time.time()
         print("="*20)
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Train Loss: {train_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Train Accuracy: {train_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Train F1: {train_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Train Prec: {train_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Train Recall: {train_recall[-1]:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Train Loss: {train_losses[-1]:>0.5f}")
+        print(f"Epoch {epoch+1}/{args.epochs} Train Accuracy: {train_accs[-1]*100:>0.2f}%" )
+        print(f"Epoch {epoch+1}/{args.epochs} Train F1: {train_f1[-1]*100:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Train Prec: {train_precision[-1]:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Train Recall: {train_recall[-1]:>0.2f}" )
 
 
         running_loss = 0
@@ -187,7 +171,7 @@ def main():
         targets_accum = []
 
         with torch.no_grad():
-            for batch, targets in tqdm(test_dataloader, leave=False):
+            for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
                 # for batch, targets in test_dl:
                 targets_accum.append(targets)
                 batch, targets = batch.to(device), targets.to(device)
@@ -213,13 +197,13 @@ def main():
         test_recall.append(epoch_recall)
 
         t1 = time.time()
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Test Loss: {test_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Test Accuracy: {test_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Test F1: {test_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Test Prec: {test_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{NUM_EPOCHS} Test Recall: {test_recall[-1]:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Test Loss: {test_losses[-1]:>0.5f}")
+        print(f"Epoch {epoch+1}/{args.epochs} Test Accuracy: {test_accs[-1]*100:>0.2f}%" )
+        print(f"Epoch {epoch+1}/{args.epochs} Test F1: {test_f1[-1]*100:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Test Prec: {test_precision[-1]:>0.2f}" )
+        print(f"Epoch {epoch+1}/{args.epochs} Test Recall: {test_recall[-1]:>0.2f}" )
         
-        print(f"\nEpoch {epoch+1}/{NUM_EPOCHS} Total EPOCH Time: {(t1-t0)/60:>0.2f} min")
+        print(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(t1-t0)/60:>0.2f} min")
         
 
         # WandB log loss, accuracy, and F1 at end of each epoch

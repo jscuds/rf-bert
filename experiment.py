@@ -5,24 +5,15 @@ import torch
 
 from torch.utils.data import Dataset
 
-from .datasets import ParaphraseDataset, QuoraDataset
-from .models import ElmoClassifier, ElmoClassifierWithMatrixLayer
+from dataloaders import ParaphraseDataset, QuoraDataset
+from models import ElmoClassifier, ElmoClassifierWithMatrixLayer
 
 class Experiment(abc.ABC):
+    model: torch.nn.Module
+    dataset: Dataset
+
     @abc.abstractmethod
     def __init__(self, args: argparse.Namespace):
-        raise NotImplementedError()
-
-    @property
-    @abc.abstractmethod
-    def model(self) -> torch.nn.Module:
-        """The model for the current experiment."""
-        raise NotImplementedError()
-
-    @property
-    @abc.abstractmethod
-    def dataset(self) -> Dataset:
-        """The dataset for the current experiment."""
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -34,12 +25,13 @@ class Experiment(abc.ABC):
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
+    model: ElmoClassifierWithMatrixLayer
+    dataset: ParaphraseDataset
     def __init__(self, args: argparse.Namespace):
         assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
         self.model = (
             ElmoClassifierWithMatrixLayer(
                 num_output_representations = 1, 
-                requires_grad=True, 
                 dropout=0
             )
         )
@@ -47,7 +39,7 @@ class RetrofitExperiment(Experiment):
         self.dataset = ParaphraseDataset(
             'quora',
             model_name='bert-base-uncased', num_examples=20000, 
-            max_length=40, stop_words_file=f'{cwd}/stop_words_en.txt',
+            max_length=40, stop_words_file=f'stop_words_en.txt',
             r1=0.5, seed=42
         )
 
@@ -62,6 +54,8 @@ class FinetuneExperiment(Experiment):
     """Configures experiments for fine-tuning models, typically for
     classification-based tasks like those from the GLUE benchmark.
     """
+    model: ElmoClassifier
+    dataset: QuoraDataset
     def __init__(self, args: argparse.Namespace):
         assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
         self.model = (
@@ -72,11 +66,9 @@ class FinetuneExperiment(Experiment):
             )
         )
         self.dataset = (
-            QuoraDataset(para_dataset = 'quora', model_name = MODEL_NAME, 
-                     num_examples = NUM_EXAMPLES, max_length = MAX_LENGTH,
-                     train_size = TRAIN_SIZE, test_size = TEST_SIZE, seed = RNDM_SEED)
+            QuoraDataset(para_dataset='quora', train_test_split=args.train_test_split)
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
     
-    def compute_loss(preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         return self._loss_fn(preds, targets)

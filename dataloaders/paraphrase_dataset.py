@@ -28,7 +28,7 @@ from torch.nn.utils.rnn import (pack_padded_sequence, pad_packed_sequence,
 from torch.utils.data import DataLoader, Dataset
 
 # TODO future: ParaDataset to work for all datasets?
-class ParaDataset(Dataset):
+class ParaphraseDataset(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'bert-base-uncased', 
                  num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
@@ -338,11 +338,3 @@ class ParaDataset(Dataset):
         self.__dict__.update(tmp_dict)
         print("Loaded data object from", filename)
         print("=====================\nCaution: need to reload desc embeddings.\n=====================")
-
-
-
-# FURTHER TODO:
-# 1. When finding intersection of words, remove token_ids of '?', '[CLS]', '[SEP]', ... maybe all symbols & punctuation?
-# 2. is_synonym and corrupt_n() not included from Shi's original Data class
-# 3. might need to pass ._para_tuples and ._neg_tuples for testing purposes...that's the only thing linking the q_ids to the actual sentences
-#    in the __getitem__() return.

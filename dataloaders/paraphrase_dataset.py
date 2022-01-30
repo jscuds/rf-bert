@@ -1,14 +1,3 @@
-# Globals and Imports
-
-LOCAL = False
-STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
-
-# MODEL_NAME = "bert-base-uncased"
-# MAX_LENGTH = 40
-PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
-MODEL_CACHE_DIR = "/mnt/d/huggingface/transformers"
-DATASET_CACHE_DIR = "/mnt/d/huggingface/datasets"
-
 import copy
 import pickle
 import random
@@ -26,6 +15,15 @@ from torch import Tensor, nn, optim
 from torch.nn.utils.rnn import (pack_padded_sequence, pad_packed_sequence,
                                 pad_sequence)
 from torch.utils.data import DataLoader, Dataset
+
+# Globals and Imports
+
+LOCAL = False
+STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
+
+# MODEL_NAME = "bert-base-uncased"
+# MAX_LENGTH = 40
+PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 
 # TODO future: ParaDataset to work for all datasets?
 class ParaphraseDataset(Dataset):
@@ -51,7 +49,7 @@ class ParaphraseDataset(Dataset):
         self._token_pair_to_neg_tuples: Dict[Tuple[int,int],Set[int]] = {} # maps pair of word_token_ids to their index position in self._neg_tuples; {(token_id, token_id) : set([idx of self._neg_tuples, ...])}
         self._token_to_sents: Dict[int,Set[Tuple[int,int]]] = {} # reverse index of sentences given tokens. This is a map {token_id : set([(sent_id, index_of_the_token_in_the_sentence), ...]) }
         
-        if LOCAL: self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir = MODEL_CACHE_DIR)
+        if LOCAL: self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         else:     self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         
         # load stop words from file
@@ -94,8 +92,7 @@ class ParaphraseDataset(Dataset):
 
         # load quora from HuggingFace
         if self.para_dataset == 'quora':
-            if LOCAL: quora = datasets.load_dataset(self.para_dataset, cache_dir = MODEL_CACHE_DIR)
-            else:     quora = datasets.load_dataset(self.para_dataset)
+            quora = datasets.load_dataset(self.para_dataset)
             
             quora_shuffled = quora.shuffle(seed=self.seed)
             count = 0

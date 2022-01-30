@@ -1,3 +1,17 @@
+from typing import Tuple
+
+import datasets
+import torch
+
+from allennlp.modules.elmo import batch_to_ids
+
+from torch.utils.data import Dataset
+
+# import allennlp
+
+# # https://github.com/luismsgomes/mosestokenizer
+# from mosestokenizer import MosesTokenizer
+
 class QuoraDataset(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'ELMo-allennlp', 
                  num_examples: int = 20000, max_length: int = 40, 
@@ -23,9 +37,6 @@ class QuoraDataset(Dataset):
         #elmo_change
         # https://github.com/luismsgomes/mosestokenizer
         self.tokenizer = MosesTokenizer('en') 
-        
-
-
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
 
         # load quora, mrpc, etc.
@@ -47,7 +58,7 @@ class QuoraDataset(Dataset):
         # return len(self.labels) #changed from ParaDataset
 
     # based on Shi's gen_batch
-    def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor, Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if self._split == 'train':
             # self.train_sents has shape B x 2 x self.max_length x word_length==50
             return self.train_sents[idx,:,:,:], torch.tensor(self.train_labels[idx])
@@ -140,6 +151,7 @@ class QuoraDataset(Dataset):
                 # concat_sents = ' '.join([s1,s2])
                 # print(concat_sents)
                 # interim_tokenized = batch_to_ids([self.tokenizer.tokenize(concat_sents, escape=False)]) # shape: (1,seq length, 50)
+                # TODO: initialize tokenizer in a smarter way
                 s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq length, 50)
                 s2_interim_tokenized = batch_to_ids([self.tokenizer(s2)]) # shape: (1,seq length, 50) 
 

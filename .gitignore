@@ -1,7 +1,7 @@
 # Local files and directories
 *.lnk
 *.docx
-retrofitting_outline.py
+local-misc/
 
 # Cluster directories and files
 tmpwdir/

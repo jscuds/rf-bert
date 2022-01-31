@@ -63,13 +63,16 @@ class TestQuora:
         assert isinstance(test_ntoken2, int)
 
 
-# check number ._paraphrase_sets; len(DATA_NAME._pararphrase_sets)/2 == 6526 when count is incremented at top and seed = 42
+#TODO: check number ._paraphrase_sets; len(DATA_NAME._pararphrase_sets)/2 == 6526 when count is incremented at top and seed = 42
 
 
-# NEED TO CHECK
+#TODO: NEED TO CHECK
 # _overlap()
 # _corrupt()
 # _gen_neg_tuple()
 
 # __len__()
 # __getitem__() with DataLoader
+
+
+#TODO: models.py tests

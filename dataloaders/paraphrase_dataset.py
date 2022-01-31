@@ -6,19 +6,16 @@ import time
 from typing import Dict, List, Set, Tuple
 
 import datasets
-from transformers import AutoTokenizer
-
 import numpy as np
 #import pandas as pd
 import torch
+from mosestokenizer import MosesTokenizer
 from torch import Tensor, nn, optim
-from torch.nn.utils.rnn import (pack_padded_sequence, pad_packed_sequence,
-                                pad_sequence)
 from torch.utils.data import DataLoader, Dataset
+from transformers import AutoTokenizer
 
 # Globals and Imports
 
-LOCAL = False
 STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
 
 # MODEL_NAME = "bert-base-uncased"
@@ -26,6 +23,7 @@ STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
 PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 
 # TODO future: ParaDataset to work for all datasets?
+# TODO **NEED TO REWRITE TO WORK WITH ELMO**
 class ParaphraseDataset(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'bert-base-uncased', 
                  num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
@@ -49,8 +47,7 @@ class ParaphraseDataset(Dataset):
         self._token_pair_to_neg_tuples: Dict[Tuple[int,int],Set[int]] = {} # maps pair of word_token_ids to their index position in self._neg_tuples; {(token_id, token_id) : set([idx of self._neg_tuples, ...])}
         self._token_to_sents: Dict[int,Set[Tuple[int,int]]] = {} # reverse index of sentences given tokens. This is a map {token_id : set([(sent_id, index_of_the_token_in_the_sentence), ...]) }
         
-        if LOCAL: self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        else:     self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         
         # load stop words from file
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
@@ -73,7 +70,7 @@ class ParaphraseDataset(Dataset):
         if (random.uniform(0,1) > self.r1) or (neg_tuple is None):
             neg_tuple = self._corrupt(self._para_tuples[idx])
             
-
+        # js TODO elmo_change tokens from int to (1,1,50)
         sent1 = self._id_to_sent[ self._para_tuples[idx][0] ] # tensor of token_ids
         sent2 = self._id_to_sent[ self._para_tuples[idx][1] ] 
         nsent1 = self._id_to_sent[ neg_tuple[0] ] 
@@ -128,6 +125,7 @@ class ParaphraseDataset(Dataset):
                 #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
 
                 # use (1) `.ids` for ints or (2) `.tokens` for wordpiece strings
+                #js TODO elmo_change using batch_to_ids and tokenizer
                 s1_tokenized = self.tokenizer(s1,truncation=True, max_length = self.max_length, padding= 'max_length')[0] 
                 s2_tokenized = self.tokenizer(s2,truncation=True, max_length = self.max_length, padding= 'max_length')[0]
 
@@ -135,6 +133,7 @@ class ParaphraseDataset(Dataset):
                 #   js: I'm going to just use a dictionary
                 
                 #if not s1_tokenized in sent2id: shouldn't be necessary due to id2sent.update() functionality
+                #js TODO elmo_change to s1_tokenized
                 self._id_to_sent.update({s1_id : s1_tokenized.ids})
                 self._id_to_sent.update({s2_id : s2_tokenized.ids})
                 self._sent_to_id.update({tuple(s1_tokenized.ids) : s1_id}) #js NOTE have to use Tuples because lists aren't hashable
@@ -215,6 +214,8 @@ class ParaphraseDataset(Dataset):
         # check for digits or starts with '-'
         #TODO: quicker to make a list of token_ids that correspond to integers?
         #   it seems like it would be easer than coverting back to a string with the tokenizer...
+        
+        #js TODO: elmo_change: this won't work with elmo because I don't have a way to go from token_ids --> strings
         for i in inter.copy():                      #js convert back to strings; remove digits and words beginning with '-'
             if self.tokenizer.decode(i).isdigit():
                 inter.remove(i)
@@ -254,7 +255,7 @@ class ParaphraseDataset(Dataset):
         # token_id of ONE OVERLAP WORD; INDEXING: finds s1_id in `_id_to_sent` Tensor, then uses the overlap word index to get the token_id of that word
         #    then using `token`, find all possible sentences with that token: set(sent_id, index_of_token)
         token = self._id_to_sent[target_sent_id][target_sent_index]  
-        sents_list = copy.copy(self._token_to_sents[token])  #TODO: use copy.copy() o/w it modifies the actual self._token_to_sents dictionary
+        sents_list = copy.copy(self._token_to_sents[token])  #copy.copy() o/w it modifies the actual self._token_to_sents dictionary
         
         # remove s1 and s2 out of the set of possible sentences with token
         if (s1_id, s1_index) in sents_list:      
@@ -335,3 +336,12 @@ class ParaphraseDataset(Dataset):
         self.__dict__.update(tmp_dict)
         print("Loaded data object from", filename)
         print("=====================\nCaution: need to reload desc embeddings.\n=====================")
+
+class ParaphraseDatasetElmo(Dataset):
+
+    #     # js TODO elmo_change tokenizer
+    # if 'bert' in self.model_name:
+    #     self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    # elif 'elmo' in self.model_name.lower():
+    #     self.tokenizer = MosesTokenizer('en') 
+    pass

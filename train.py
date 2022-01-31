@@ -31,6 +31,8 @@ def parse_args() -> argparse.Namespace:
         help='number of training epochs')
     parser.add_argument('--num_examples', type=int, default=20_000,
         help='number of training examples')
+    parser.add_argument('--max_length', type=int, default=40,
+        help='max length of each sequence for truncation')
     parser.add_argument('--train_test_split', type=float, default=0.8,
         help='percent of data to use for train, in (0, 1]')
 
@@ -41,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--drop_last', type=bool, default=False,
         help='whether to drop remainder of last batch')
 
+    # TODO add dataset so we can switch between 'quora', 'mrpc'...
+    # TODO add _task_dataset so we can switch between tasks for evaluation/attack
+    
     args = parser.parse_args()
     set_random_seed(args.random_seed)
     
@@ -100,11 +105,16 @@ def main():
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_fn = experiment.compute_loss
+
+    # use wandb.watch() to track gradients
+    # log_freq is setup to log 10 times per batch: num_examples//batch_size//10
+    #    which means it will log gradients every `log_freq` batches
+    log_freq = args.num_examples//args.batch_size//10
+    wandb.watch(model,criterion=loss_fn, log='all',log_freq=log_freq)
 
     train_losses = []
     test_losses = []
@@ -121,7 +131,6 @@ def main():
     t0 = time.time()
     for epoch in range(args.epochs):
         running_loss = 0
-        n_correct = 0
         preds_accum = []
         targets_accum = []
 
@@ -167,7 +176,6 @@ def main():
 
 
         running_loss = 0
-        n_correct = 0
         preds_accum = []
         targets_accum = []
 

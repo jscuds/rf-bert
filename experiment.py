@@ -40,7 +40,7 @@ class RetrofitExperiment(Experiment):
         # TODO: pass proper args to ParaphaseDataset
         self.dataset = ParaphraseDataset(
             'quora',
-            model_name='bert-base-uncased', num_examples=20000, 
+            model_name='bert-base-uncased', num_examples=args.num_examples, 
             max_length=40, stop_words_file=f'stop_words_en.txt',
             r1=0.5, seed=42
         )
@@ -67,8 +67,10 @@ class FinetuneExperiment(Experiment):
                 dropout=0
             )
         )
-        self.dataset = (
-            QuoraDataset(para_dataset='quora', train_test_split=args.train_test_split)
+        self.dataset = QuoraDataset(
+            para_dataset='quora', num_examples = args.num_examples,
+            max_length=args.max_length, train_test_split=args.train_test_split,
+            seed=args.random_seed
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
     

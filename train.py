@@ -50,6 +50,7 @@ def main():
 
     args = parse_args()
 
+    # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
         'finetune': FinetuneExperiment

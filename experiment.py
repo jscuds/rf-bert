@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 from dataloaders import ParaphraseDataset, QuoraDataset
-from models import ElmoClassifier, ElmoClassifierWithMatrixLayer
+from models import ElmoClassifier
 
 class Experiment(abc.ABC):
     model: torch.nn.Module
@@ -25,14 +25,16 @@ class Experiment(abc.ABC):
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
-    model: ElmoClassifierWithMatrixLayer
+    model: ElmoClassifier
     dataset: ParaphraseDataset
     def __init__(self, args: argparse.Namespace):
         assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
         self.model = (
-            ElmoClassifierWithMatrixLayer(
+            ElmoClassifier(
                 num_output_representations = 1, 
-                dropout=0
+                requires_grad=False,
+                dropout=0,
+                m_transform=True
             )
         )
         # TODO: pass proper args to ParaphaseDataset

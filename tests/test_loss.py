@@ -35,7 +35,7 @@ class TestRetrofitLoss:
         M = torch.rand((128, 128), dtype=float)
         assert orthogonalization_loss(M) > 0
     
-    def test_retrofit_equal(self):
+    def test_retrofit_hinge_equal(self):
         """when the positive pair are equal, and the negative pair
         are equal, and gamma is zero, loss should be zero
         """
@@ -45,7 +45,7 @@ class TestRetrofitLoss:
             a, a, b, b, 0
         ) == 0.0
     
-    def test_retrofit_equal_dist(self):
+    def test_retrofit_hinge_equal_dist(self):
         """if positive pair and negative pair are an equal distance 
         apart, loss should be equal to the margin"""
         a = torch.tensor([1, 0, 1, 0], dtype=float)
@@ -55,7 +55,7 @@ class TestRetrofitLoss:
             a, b, a, b, gamma
         ) == gamma
     
-    def test_retrofit_best_case_big_margin(self):
+    def test_retrofit_hinge_best_case_big_margin(self):
         """If positive pair are really close together, and negative
         pair are really far apart, that is good. So the loss should be
         zero (since the pairs are farther apart than the margin).
@@ -71,7 +71,7 @@ class TestRetrofitLoss:
             a1, a2, b1, b2, gamma
         ) == 0.0
     
-    def test_retrofit_worst_case(self):
+    def test_retrofit_hinge_worst_case(self):
         """If positive pair are really far apart, and negative
         pair are really close together, that is bad. So the loss should be
         (much) greater than the margin

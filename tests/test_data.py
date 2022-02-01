@@ -4,8 +4,6 @@ import torch
 
 from dataloaders import ParaphraseDataset
 
-# Instantiate ParaDataset class
-
 class TestQuora:
     quora = ParaphraseDataset(para_dataset = 'quora', model_name = 'bert-base-uncased', num_examples = 20000, 
                     max_length = 40, stop_words_file = './stop_words_en.txt', r1 =0.5, seed = 42)

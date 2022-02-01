@@ -26,7 +26,7 @@ def retrofit_hinge_loss(
         word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
         gamma: float
     ) -> torch.Tensor:
-    """L_H = \sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
+    """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
     
     Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
     will be a small distance), and d_2 is the distance between w's representations in a
@@ -34,6 +34,8 @@ def retrofit_hinge_loss(
 
     And the []_+ operator is max(x, 0).
     """
+    assert word_rep_pos_1.shape == word_rep_pos_2.shape
+    assert word_rep_neg_1.shape == word_rep_neg_2.shape
     positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2)
     negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2)
     loss = positive_pair_distance + gamma - negative_pair_distance
@@ -44,7 +46,9 @@ def retrofit_hinge_loss(
 
 def orthogonalization_loss(M: torch.Tensor) -> torch.Tensor:
     """L_o = ||I - M^T M||"""
-    I = torch.eye(M.size).to(M.device) 
+    assert len(M.shape) == 2
+    assert M.shape[0] == M.shape[1]
+    I = torch.eye(M.shape[0], dtype=float).to(M.device) 
     return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
 class RetrofitExperiment(Experiment):

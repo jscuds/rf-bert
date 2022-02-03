@@ -16,7 +16,7 @@ from mosestokenizer import MosesTokenizer
 # from mosestokenizer import MosesTokenizer
 
 class QuoraDataset(Dataset):
-    def __init__(self, para_dataset: str = 'quora', num_examples: int = 20000, max_length: int = 40, 
+    def __init__(self, para_dataset: str = 'quora', num_examples: int = 25000, max_length: int = 40, 
                  train_test_split: float = 0.8, seed: int = None):
         
         self.para_dataset = para_dataset

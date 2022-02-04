@@ -1,2 +1,2 @@
-from .paraphrase_dataset import ParaphraseDataset
+from .paraphrase_dataset import ParaphraseDatasetBert, ParaphraseDatasetElmo
 from .quora_dataset import QuoraDataset

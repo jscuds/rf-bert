@@ -49,6 +49,7 @@ def parse_args() -> argparse.Namespace:
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
+    # TODO: additional args? dropout...
     
     args = parser.parse_args()
     set_random_seed(args.random_seed)

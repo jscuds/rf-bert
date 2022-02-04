@@ -5,7 +5,7 @@ import torch
 
 from torch.utils.data import Dataset
 
-from dataloaders import ParaphraseDataset, QuoraDataset
+from dataloaders import ParaphraseDatasetElmo, QuoraDataset
 from models import ElmoClassifier
 
 class Experiment(abc.ABC):
@@ -54,7 +54,7 @@ def orthogonalization_loss(M: torch.Tensor) -> torch.Tensor:
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
     model: ElmoClassifier
-    dataset: ParaphraseDataset
+    dataset: ParaphraseDatasetElmo
     args: argparse.Namespace
     rf_gamma: float
     rf_lambda: float
@@ -70,9 +70,9 @@ class RetrofitExperiment(Experiment):
             )
         )
         # TODO: pass proper args to ParaphaseDataset
-        self.dataset = ParaphraseDataset(
+        self.dataset = ParaphraseDatasetElmo(
             'quora',
-            model_name='bert-base-uncased', num_examples=args.num_examples, 
+            model_name='elmo', num_examples=args.num_examples, 
             max_length=40, stop_words_file=f'stop_words_en.txt',
             r1=0.5, seed=42
         )

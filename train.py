@@ -1,5 +1,6 @@
 import argparse
 import copy
+import logging
 import random
 import time
 
@@ -8,10 +9,11 @@ import torch
 import tqdm
 import wandb
 
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
+
+logger = logging.getLogger(__name__)
 
 def set_random_seed(r):
     random.seed(r)
@@ -29,6 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--random_seed', type=int, default=42)
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
+    parser.add_argument('--logs_per_epoch', type=int, default=5,
+        help='log metrics this number of times per epoch')
     parser.add_argument('--num_examples', type=int, default=20_000,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
@@ -63,15 +67,13 @@ def main():
     }[args.experiment]
     experiment = experiment_cls(args)
 
-    model = experiment.model
-
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
 
     # js NOTE: HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
-    # TODO: refactor this .split() thing, it's not ideal
+    # TODO(jxm): refactor this .split() thing, it's not ideal
     train_dataset = copy.copy(experiment.dataset)
     test_dataset = copy.copy(experiment.dataset)
 
@@ -80,12 +82,9 @@ def main():
     test_dataset.split('test')
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
 
-    print('\n***CHECK DATASET LENGTHS:***')
-    print(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-    print(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
-
-    print('\n***CHECK self.tokenized_sentences.shape: ')
-    # print(f'quora.tokenized_sentences.shape: {quora.tokenized_sentences.shape}\nintended shape: {(quora.num_examples,2,40,50)}')
+    logger.info('\n***CHECK DATASET LENGTHS:***')
+    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
+    logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
 
 
     #########################################################
@@ -105,131 +104,56 @@ def main():
 
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model.to(device)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    loss_fn = experiment.compute_loss
+    experiment.model.to(device)
+    optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
 
     # use wandb.watch() to track gradients
-    # log_freq is setup to log 10 times per batch: num_examples//batch_size//10
-    #    which means it will log gradients every `log_freq` batches
-    log_freq = args.num_examples//args.batch_size//10
-    wandb.watch(model,criterion=loss_fn, log='all',log_freq=log_freq)
+    # watch_log_freq is setup to log 10 times per batch: num_examples//batch_size//10
+    #    which means it will log gradients every `watch_log_freq` batches
+    # --> is this right? It logs grads 10x *per batch*? seems like quite often. -jxm
+    watch_log_freq = args.num_examples//args.batch_size//10
+    wandb.watch(experiment.model, log_freq=watch_log_freq)
 
-    train_losses = []
-    test_losses = []
-    train_accs = []
-    test_accs = []
-    train_f1 = []
-    test_f1 = []
-    train_precision = []
-    test_precision = []
-    train_recall = []
-    test_recall = []
-    # TODO: cleanup metric computation
+    log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
+    logger.info(f'Logging metrics every {log_interval} training steps')
 
-    t0 = time.time()
+    epoch_start_time = time.time()
     for epoch in range(args.epochs):
-        running_loss = 0
-        preds_accum = []
-        targets_accum = []
-
-        for batch, targets in tqdm.tqdm(train_dataloader, leave=False):
-            targets_accum.append(targets)
+        logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
+        for step, (batch, targets) in tqdm.tqdm(enumerate(train_dataloader), leave=False):
             batch, targets = batch.to(device), targets.to(device)
-            preds = model(batch)
-
-            loss = loss_fn(preds.squeeze(), targets.float())
-
-            preds_sigmoid = torch.sigmoid(preds.squeeze())
-            preds_accum.append(preds_sigmoid.cpu().detach().numpy().round()) 
+            preds = experiment.model(batch)
+            train_loss = experiment.compute_loss(preds, targets, 'train')
             
-            loss.backward()
+            train_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
 
             running_loss += loss.cpu().item()
 
+            if step % log_interval == 0:
+                logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
+                # Compute eval metrics every `log_interval` batches
+                experiment.model.eval() # set model in eval mode for evaluation
+                with torch.no_grad():
+                    for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
+                        targets_accum.append(targets)
+                        batch, targets = batch.to(device), targets.to(device)
+                        preds = experiment.model(batch)
+                        experiment.compute_loss_and_update_metrics(preds, targets, 'test')
+                # Compute metrics, log, and reset
+                metrics_dict = experiment.compute_and_reset_metrics()
+                wandb.log(metrics_dict)
+                # Set model back in train mode to resume training
+                experiment.model.train() 
+            
+            ######################################
+            # Log elapsed time at end of each epoch    
+            epoch_end_time = time.time()
+            logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")
+            wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
 
-        # https://discuss.pytorch.org/t/calculating-f1-score-over-batched-data/83348/2    
-        preds_accum = np.concatenate(preds_accum)
-        targets_accum = np.concatenate(targets_accum)
-        epoch_f1 = f1_score(targets_accum, preds_accum, average='binary')
-        epoch_precision = precision_score(targets_accum, preds_accum, average='binary')
-        epoch_recall = recall_score(targets_accum, preds_accum, average='binary')
-        epoch_accuracy = accuracy_score(targets_accum, preds_accum)
-        
-
-        train_losses.append(running_loss / len(train_dataloader.dataset))
-        train_accs.append(epoch_accuracy)
-        train_f1.append(epoch_f1)
-        train_precision.append(epoch_precision)
-        train_recall.append(epoch_recall)
-
-        t1 = time.time()
-        print("="*20)
-        print(f"Epoch {epoch+1}/{args.epochs} Train Loss: {train_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{args.epochs} Train Accuracy: {train_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train F1: {train_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train Prec: {train_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train Recall: {train_recall[-1]:>0.2f}" )
-
-
-        running_loss = 0
-        preds_accum = []
-        targets_accum = []
-
-        with torch.no_grad():
-            for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
-                # for batch, targets in test_dl:
-                targets_accum.append(targets)
-                batch, targets = batch.to(device), targets.to(device)
-                preds = model(batch)
-                loss = loss_fn(preds.squeeze(), targets.float())
-                preds_sigmoid = torch.sigmoid(preds.squeeze())
-                preds_accum.append(preds_sigmoid.cpu().round())
-
-                running_loss += loss.cpu().item()
-
-
-        preds_accum = np.concatenate(preds_accum)
-        targets_accum = np.concatenate(targets_accum)
-        epoch_f1 = f1_score(targets_accum, preds_accum, average='binary')
-        epoch_precision = precision_score(targets_accum, preds_accum, average='binary')
-        epoch_recall = recall_score(targets_accum, preds_accum, average='binary')
-        epoch_accuracy = accuracy_score(targets_accum, preds_accum)
-        
-        test_losses.append(running_loss / len(test_dataloader.dataset))
-        test_accs.append(epoch_accuracy)
-        test_f1.append(epoch_f1)
-        test_precision.append(epoch_precision)
-        test_recall.append(epoch_recall)
-
-        t1 = time.time()
-        print(f"Epoch {epoch+1}/{args.epochs} Test Loss: {test_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{args.epochs} Test Accuracy: {test_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test F1: {test_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test Prec: {test_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test Recall: {test_recall[-1]:>0.2f}" )
-        
-        print(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(t1-t0)/60:>0.2f} min")
-        
-
-        # WandB log loss, accuracy, and F1 at end of each epoch
-        wandb.log({"Train/Loss": train_losses[-1],
-                "Train/Acc": train_accs[-1],
-                "Train/F1": train_f1[-1],
-                "Train/Recall": train_recall[-1],
-                "Train/Precision": train_precision[-1],
-                "Test/Loss": test_losses[-1],
-                "Test/Acc": test_accs[-1],
-                "Test/F1": test_f1[-1],
-                "Test/Recall": test_recall[-1],
-                "Test/Precision": test_precision[-1],
-                "Epoch Time": (t1-t0)/60})
-
-        t0 = time.time()
+        epoch_start_time = time.time()
 
 if __name__ == '__main__':
     main()

@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 from dataloaders import ParaphraseDatasetElmo, QuoraDataset
-from models import ElmoClassifier
+from models import ElmoClassifier, ElmoRetrofit
 
 class Experiment(abc.ABC):
     model: torch.nn.Module
@@ -36,7 +36,7 @@ def retrofit_hinge_loss(
     """
     assert word_rep_pos_1.shape == word_rep_pos_2.shape
     assert word_rep_neg_1.shape == word_rep_neg_2.shape
-    positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2)
+    positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2) # TODO: need keepdim=True??
     negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2)
     loss = positive_pair_distance + gamma - negative_pair_distance
     # hinge loss: return max(0,x)
@@ -53,7 +53,7 @@ def orthogonalization_loss(M: torch.Tensor) -> torch.Tensor:
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
-    model: ElmoClassifier
+    model: ElmoRetrofit
     dataset: ParaphraseDatasetElmo
     args: argparse.Namespace
     rf_gamma: float
@@ -62,19 +62,18 @@ class RetrofitExperiment(Experiment):
         assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
-            ElmoClassifier(
+            ElmoRetrofit(
                 num_output_representations = 1, 
                 requires_grad=False,
                 dropout=0,
-                m_transform=True
             )
         )
         # TODO: pass proper args to ParaphaseDataset
         self.dataset = ParaphraseDatasetElmo(
             'quora',
             model_name='elmo', num_examples=args.num_examples, 
-            max_length=40, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=42
+            max_length=args.max_length, stop_words_file=f'stop_words_en.txt',
+            r1=0.5, seed=args.random_seed
         )
         self.rf_lambda = self.args.rf_lambda
         self.rf_gamma = self.args.rf_gamma
@@ -89,7 +88,8 @@ class RetrofitExperiment(Experiment):
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
 
-    def compute_loss(self, *args, **kwargs) -> torch.Tensor:
+    def compute_loss(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
+                     word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
         Loss is defined in Section 3.2 of the paper.
@@ -98,7 +98,7 @@ class RetrofitExperiment(Experiment):
         L_o: orthogonality constraint on matrix transformation M
         L = L_h + lambda * L_o
         """
-        # TODO: how to get representations for each word?
+        # TODO: how to get representations for each word? --> ANS: ElmoRetrofit.forward() outputs
         hinge_loss = retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,

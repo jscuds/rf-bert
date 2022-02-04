@@ -119,8 +119,8 @@ class ElmoClassifier(torch.nn.Module):
         assert cat_vect.shape == (u.shape[0],u.shape[1]*3+1) # shape [batch, 1024*3+1]
         x = self.linear1(cat_vect)
         x = self.relu(x)
-        logits = self.linear2(x)
-        assert logits.shape == (B,1)
+        logits = self.linear2(x).squeeze()
+        assert logits.shape == (B,)
         return logits
     
     # https://github.com/allenai/allennlp/blob/main/allennlp/modules/elmo.py

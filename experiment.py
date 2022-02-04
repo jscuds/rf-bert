@@ -6,17 +6,17 @@ import logging
 
 import torch
 
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from torch.utils.data import Dataset
 
-from dataloaders import ParaphraseDataset, QuoraDataset
+from dataloaders import ParaphraseDatasetElmo, QuoraDataset
+from metrics import f1, accuracy, precision, recall
 from models import ElmoClassifier
 from utils import TensorRunningAverages
 
 
 logger = logging.getLogger(__name__)
 
-Metric = Callable[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]
+Metric = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 class Experiment(abc.ABC):
     model: torch.nn.Module
@@ -55,7 +55,7 @@ class Experiment(abc.ABC):
             val = self.metric_averages.get(name)
             metrics[name] = val
             # todo(jxm): use `logging` package here
-            logger.info('Metric %s = %f', name, val)
+            logger.info('\t%s = %f', name, val)
         # Clear all metrics and return the averages
         self.metric_averages.clear_all()
         return metrics
@@ -65,7 +65,7 @@ class Experiment(abc.ABC):
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
     model: ElmoClassifier
-    dataset: ParaphraseDataset
+    dataset: ParaphraseDatasetElmo # TODO: make this abstract ParaphraseDataset class w/ inheritance for ELMO/BERT
     metrics: Dict[str, Metric]
     metric_averages: TensorRunningAverages
 
@@ -80,12 +80,14 @@ class RetrofitExperiment(Experiment):
             )
         )
         # TODO: pass proper args to ParaphaseDataset
-        self.dataset = ParaphraseDataset(
+        self.dataset = ParaphraseDatasetElmo(
             'quora',
             model_name='bert-base-uncased', num_examples=args.num_examples, 
             max_length=40, stop_words_file=f'stop_words_en.txt',
             r1=0.5, seed=42
         )
+        self.metric_averages = TensorRunningAverages()
+        # TODO: implement retrofit metrics
         self.metrics = {}
 
 
@@ -120,11 +122,12 @@ class FinetuneExperiment(Experiment):
             seed=args.random_seed
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
+        self.metric_averages = TensorRunningAverages()
         self.metrics = {
-            'f1': functools.partial(f1_score, average='binary'),
-            'precision': functools.partial(precision_score, average='binary'),
-            'recall': functools.partial(recall_score, average='binary'),
-            'accuracy': functools.partial(accuracy_score, average='binary'),
+            'f1': f1,
+            'precision': precision,
+            'recall': recall,
+            'accuracy': accuracy,
         }
     
     def compute_loss_and_update_metrics(self, preds: torch.Tensor, targets: torch.Tensor, metrics_key: str) -> torch.Tensor:
@@ -132,8 +135,14 @@ class FinetuneExperiment(Experiment):
 
         Returns loss.
         """
+        assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)
         self.metric_averages.update(f'{metrics_key}_loss', loss.item())
-        pred_classes = torch.sigmoid(preds.squeeze().round()) # TODO should we round here for sure?
+        pred_classes = torch.sigmoid(preds.squeeze()).detach() # TODO should we round here for sure?
+
+        for metric_name, metric_func in self.metrics.items():
+            val = metric_func(pred_classes, targets)
+            self.metric_averages.update(f'{metrics_key}_{metric_name}', val)
+
         return loss
 

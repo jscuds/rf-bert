@@ -4,6 +4,8 @@ import logging
 import random
 import time
 
+from pathlib import Path
+
 import numpy as np
 import torch
 import tqdm
@@ -22,7 +24,7 @@ def set_random_seed(r):
     torch.cuda.manual_seed(r)
 
 
-def parse_args() -> argparse.Namespace:
+def get_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Train a model.')
 
     parser.add_argument('experiment', type=str, 
@@ -50,16 +52,10 @@ def parse_args() -> argparse.Namespace:
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
     # TODO: additional args? dropout, 
-
-    args = parser.parse_args()
-    set_random_seed(args.random_seed)
     
-    return args
+    return parser
 
-def main():
-
-    args = parse_args()
-
+def run_training_loop(args: argparse.Namespace):
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
@@ -92,15 +88,25 @@ def main():
     #########################################################
 
 
-    # WandB init and config (based on argument dictionaries in imports/globals cell)
     day = time.strftime(f'%Y-%m-%d')
+    exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
+    # WandB init and config (based on argument dictionaries in imports/globals cell)
     wandb.init(
-        name=f'{args.experiment}_{args.model_name_or_path}_{day}', # TODO: fix/restore TITLE
+        name=exp_name,
         project='rf-bert',
         entity='jscuds',
         notes=None,
         config=vars(args)
     )
+
+    # Log to a file and stdout
+    Path("logs/").mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(f'logs/{exp_name}.log'),
+            logging.StreamHandler()
+        ])
 
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -123,13 +129,12 @@ def main():
         for step, (batch, targets) in tqdm.tqdm(enumerate(train_dataloader), leave=False):
             batch, targets = batch.to(device), targets.to(device)
             preds = experiment.model(batch)
-            train_loss = experiment.compute_loss(preds, targets, 'train')
+            # TODO: cast to float in dataloader and remove this call to float()
+            train_loss = experiment.compute_loss_and_update_metrics(preds, targets.float(), 'train')
             
             train_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-
-            running_loss += loss.cpu().item()
 
             if step % log_interval == 0:
                 logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
@@ -137,23 +142,24 @@ def main():
                 experiment.model.eval() # set model in eval mode for evaluation
                 with torch.no_grad():
                     for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
-                        targets_accum.append(targets)
                         batch, targets = batch.to(device), targets.to(device)
                         preds = experiment.model(batch)
-                        experiment.compute_loss_and_update_metrics(preds, targets, 'test')
+                        experiment.compute_loss_and_update_metrics(preds, targets.float(), 'test')
                 # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics()
                 wandb.log(metrics_dict)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
             
-            ######################################
             # Log elapsed time at end of each epoch    
             epoch_end_time = time.time()
             logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")
             wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
 
         epoch_start_time = time.time()
+    logging.info(f'***** Training finished after {args.epochs} epochs *****')
 
 if __name__ == '__main__':
-    main()
+    args: argparse.Namespace = get_argparser().parse_args()
+    set_random_seed(args.random_seed)
+    run_training_loop(args)

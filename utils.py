@@ -1,4 +1,4 @@
-from typing import Dict, Set
+from typing import Dict, Set, Union
 
 import torch
 
@@ -14,10 +14,14 @@ class TensorRunningAverages:
     def keys(self) -> Set[str]:
         return set(self._store_sum.keys())
 
-    def update(self, key: str, val: torch.Tensor) -> None:
+    def update(self, key: str, val: Union[float, torch.Tensor]) -> None:
         if key not in self._store_sum:
             self.clear(key)
-        self._store_sum[key] += val.detach().cpu()
+        if isinstance(val, torch.Tensor):
+            self._store_sum[key] += val.detach().cpu()
+        else:
+            self._store_sum[key] += val
+
         self._store_total[key] += 1
 
     def get(self, key: str) -> float:
@@ -25,7 +29,7 @@ class TensorRunningAverages:
         return (self._store_sum[key] / float(total)).item() or 0.0
     
     def clear(self, key: str) -> None:
-        self._store_sum[key] = torch.tensor(0.0, dtype=torch.float32)
+        self._store_sum[key] = torch.tensor(0.0, dtype=torch.float64)
         self._store_total[key] = torch.tensor(0, dtype=torch.int32)
     
     def clear_all(self) -> None:

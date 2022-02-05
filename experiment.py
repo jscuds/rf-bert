@@ -120,6 +120,7 @@ class RetrofitExperiment(Experiment):
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
         # TODO: implement retrofit metrics
+        #   --> I think loss is all we need for retrofitting -js
         self.metrics = {}
 
     @property
@@ -132,8 +133,8 @@ class RetrofitExperiment(Experiment):
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
 
-    def compute_loss(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
-                     word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor) -> torch.Tensor:
+    def compute_loss_and_update_metrics(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
+                     word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
         Loss is defined in Section 3.2 of the paper.
@@ -142,15 +143,17 @@ class RetrofitExperiment(Experiment):
         L_o: orthogonality constraint on matrix transformation M
         L = L_h + lambda * L_o
         """
-        # TODO: how to get representations for each word? --> ANS: ElmoRetrofit.forward() outputs
+        # TODO: how to get representations for each word? --> ANS(js): ElmoRetrofit.forward() outputs
         hinge_loss = retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
             self.rf_gamma
         )
         orth_loss = orthogonalization_loss(self.M)
-
-        return hinge_loss + self.rf_lambda * orth_loss
+        loss = hinge_loss + self.rf_lambda * orth_loss
+        self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
+        
+        return loss
 
 
 
@@ -181,10 +184,10 @@ class FinetuneExperiment(Experiment):
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
         self.metric_averages = TensorRunningAverages()
         self.metrics = {
-            'f1': f1,
-            'precision': precision,
-            'recall': recall,
-            'accuracy': accuracy,
+            'F1': f1,
+            'Precision': precision,
+            'Recall': recall,
+            'Acc': accuracy,
         }
     
     def compute_loss_and_update_metrics(self, preds: torch.Tensor, targets: torch.Tensor, metrics_key: str) -> torch.Tensor:
@@ -194,12 +197,12 @@ class FinetuneExperiment(Experiment):
         """
         assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)
-        self.metric_averages.update(f'{metrics_key}_loss', loss.item())
+        self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
         pred_classes = torch.sigmoid(preds.squeeze()).detach() # TODO should we round here for sure?
 
         for metric_name, metric_func in self.metrics.items():
             val = metric_func(pred_classes, targets)
-            self.metric_averages.update(f'{metrics_key}_{metric_name}', val)
+            self.metric_averages.update(f'{metrics_key}/{metric_name}', val)
 
         return loss
 

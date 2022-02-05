@@ -6,7 +6,9 @@ local-misc/
 # Cluster directories and files
 tmpwdir/
 wandb/
+logs/
 err-out-files/
+exps/
 *.sbatch
 
 

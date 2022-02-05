@@ -15,6 +15,7 @@ from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
+# TODO: replace print with logging statements
 # Globals and Imports
 
 STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'

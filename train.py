@@ -46,12 +46,16 @@ def get_argparser() -> argparse.ArgumentParser:
         choices=['elmo'], help='name of model to use')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--rf_lambda', type=float, default=0.5,
+        help='lambda - regularization constant for retrofitting loss')
+    parser.add_argument('--rf_gamma', type=float, default=2,
+        help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--drop_last', type=bool, default=False,
         help='whether to drop remainder of last batch')
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
-    # TODO: additional args? dropout, 
+    # TODO: additional args? dropout...
     
     return parser
 

@@ -101,7 +101,7 @@ class TestQuoraElmo:
     def test_token_pair_to_neg_tuples(self):
         # tuple representation of 'Zealand'
         Zealand = (259, 91, 102, 98, 109, 98, 111, 101, 260, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261, 261)
-        assert self.quora._token_pair_to_neg_tuples[(Zealand, Zealand)] == {0, 11654}
+        assert self.quora._token_pair_to_neg_tuples[(Zealand, Zealand)] in [{0, 11653}, {0, 11654}] #{0, 11654} # NOTE: this is system dependent (cluster -> 11653, local -> 11654); it references the index of the list self._neg_tuples; so the index changes based on how the list was created
     
     def test_token_to_sents(self):
         assert len(self.quora._token_to_sents.keys()) == 23_975

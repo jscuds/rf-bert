@@ -1,5 +1,7 @@
 allennlp
+datasets
 mosestokenizer
 nltk
 torch
+transformers
 wandb

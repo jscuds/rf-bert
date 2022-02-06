@@ -46,7 +46,7 @@ def get_argparser() -> argparse.ArgumentParser:
         choices=['elmo'], help='name of model to use')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
-    parser.add_argument('--rf_lambda', type=float, default=0.5,
+    parser.add_argument('--rf_lambda', type=float, default=1,
         help='lambda - regularization constant for retrofitting loss')
     parser.add_argument('--rf_gamma', type=float, default=2,
         help='gamma - margin constant for retrofitting loss')
@@ -92,7 +92,7 @@ def run_training_loop(args: argparse.Namespace):
     #########################################################
 
 
-    day = time.strftime(f'%Y-%m-%d')
+    day = time.strftime(f'%Y-%m-%d-%H%M')
     exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     wandb.init(
@@ -190,7 +190,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
     #########################################################
 
 
-    day = time.strftime(f'%Y-%m-%d')
+    day = time.strftime(f'%Y-%m-%d-%H%M')
     exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     wandb.init(

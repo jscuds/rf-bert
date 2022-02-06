@@ -75,13 +75,19 @@ def retrofit_hinge_loss(
     """
     assert word_rep_pos_1.shape == word_rep_pos_2.shape
     assert word_rep_neg_1.shape == word_rep_neg_2.shape
-    positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2) # TODO: need keepdim=True??
-    negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2)
+    positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
+    negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1)
     loss = positive_pair_distance + gamma - negative_pair_distance
+    assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
+    loss = torch.clamp(loss,min=0) # shape: (batch_size,)
+    
+    return loss.mean()
     # hinge loss: return max(0,x)
-    return torch.max(
-        loss, torch.tensor(0.0, dtype=torch.float32)
-    )
+    # return torch.max(
+    #     loss, torch.tensor(0.0, dtype=torch.float32).to(word_rep_neg_1.device) 
+        # added the .to(device) because I got the following error:
+        # RuntimeError: iter.device(arg).is_cuda() INTERNAL ASSERT FAILED at "/pytorch/aten/src/ATen/native/cuda/Loops.cuh":94, please report a bug to PyTorch.
+    
 
 def orthogonalization_loss(M: torch.Tensor) -> torch.Tensor:
     """L_o = ||I - M^T M||"""

@@ -39,8 +39,8 @@ class TestRetrofitLoss:
         """when the positive pair are equal, and the negative pair
         are equal, and gamma is zero, loss should be zero
         """
-        a = torch.tensor([1, 0, 1, 0], dtype=float)
-        b = torch.tensor([0, 1, 0, 1], dtype=float)
+        a = torch.tensor([[1, 0, 1, 0]], dtype=float)
+        b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         assert retrofit_hinge_loss(
             a, a, b, b, 0
         ) == 0.0
@@ -48,8 +48,8 @@ class TestRetrofitLoss:
     def test_retrofit_hinge_equal_dist(self):
         """if positive pair and negative pair are an equal distance 
         apart, loss should be equal to the margin"""
-        a = torch.tensor([1, 0, 1, 0], dtype=float)
-        b = torch.tensor([0, 1, 0, 1], dtype=float)
+        a = torch.tensor([[1, 0, 1, 0]], dtype=float)
+        b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         gamma = 5.0
         assert retrofit_hinge_loss(
             a, b, a, b, gamma
@@ -61,11 +61,11 @@ class TestRetrofitLoss:
         zero (since the pairs are farther apart than the margin).
         """
          # a2 is a slight perturbation of a1
-        a1 = torch.tensor([1, 0, 1, 0], dtype=float)
+        a1 = torch.tensor([[1, 0, 1, 0]], dtype=float)
         a2 = a1 + torch.rand_like(a1) / 100.0
         # b2 is really far away from b1
-        b1 = torch.tensor([0, 100, 0, 100], dtype=float)
-        b2 = torch.tensor([0, -100, 0, -100], dtype=float) 
+        b1 = torch.tensor([[0, 100, 0, 100]], dtype=float)
+        b2 = torch.tensor([[0, -100, 0, -100]], dtype=float) 
         gamma = 20.0
         assert retrofit_hinge_loss(
             a1, a2, b1, b2, gamma
@@ -77,13 +77,33 @@ class TestRetrofitLoss:
         (much) greater than the margin
         """
         # a2 is really far away from a1
-        a1 = torch.tensor([0, 100, 0, 100], dtype=float)
-        a2 = torch.tensor([0, -100, 0, -100], dtype=float) 
+        a1 = torch.tensor([[0, 100, 0, 100]], dtype=float)
+        a2 = torch.tensor([[0, -100, 0, -100]], dtype=float) 
         # b2 is a slight perturbation of b1
-        b1 = torch.tensor([1, 0, 1, 0], dtype=float)
+        b1 = torch.tensor([[1, 0, 1, 0]], dtype=float)
         b2 = a1 + torch.rand_like(a1) / 100.0
         gamma = 10.0
         loss = retrofit_hinge_loss(
             a1, a2, b1, b2, gamma
         )
         assert loss > gamma
+    
+    def test_retrofit_hinge_clamp_batch(self):
+        """The hinge loss should be applied along the batch dimension, to each example individually,
+        so samples can't cancel each other out in the calculations.
+
+        In this case, the loss tensor will be something like [145, -135]. So if we clamp, then average,
+        we'll get an average of around 70. But if we average, and then clamp (which is wrong) then
+        we'll get an average of around 5.
+        """
+        # a2 is really far away from a1
+        a1 = torch.tensor([[0, 100, 0, 100], [0, 100, 0, 100]], dtype=float)
+        a2 = torch.tensor([[0, -100, 0, -100], [0, 100, 0, 100]], dtype=float) 
+        # b2 is a slight perturbation of b1
+        b1 = torch.tensor([[1, 0, 1, 0], [1, 0, 1, 0]], dtype=float)
+        b2 = a1 + torch.rand_like(a1) / 100.0
+        gamma = 5.0
+        loss = retrofit_hinge_loss(
+            a1, a2, b1, b2, gamma
+        )
+        assert loss > 50

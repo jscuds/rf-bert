@@ -198,7 +198,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
         project='rf-bert',
         entity='jscuds',
         tags=['cluster',args.model_name_or_path,'rf-loss','sgd'],
-        notes="Job ID: <CLUSTER ID HERE> \nAttempt to log 1 time per epoch\nepochs=3\nSGD(batch_size 512);\nLR=1e-5", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
+        notes="Job ID: <CLUSTER ID HERE> \nepochs=3\nSGD(batch_size 512);\nLR=1e-5", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
         config=vars(args)
     )
 

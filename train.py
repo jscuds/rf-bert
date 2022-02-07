@@ -197,7 +197,8 @@ def run_training_loop_retrofit(args: argparse.Namespace):
         name=exp_name,
         project='rf-bert',
         entity='jscuds',
-        notes=None,
+        tags=['cluster',args.model_name_or_path,'rf-loss','sgd'],
+        notes="Job ID: <CLUSTER ID HERE> \nloss.mean();\nSEPARATED: Train/Hinge_Loss.mean(); Train/Pre_Clamp_Hinge_Loss.mean(); Train/Orthogonalization_Loss\nepochs=3\nSGD(batch_size 512);\nLR=1e-4", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
         config=vars(args)
     )
 
@@ -213,7 +214,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment.model.to(device)
-    optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.SGD(experiment.model.parameters(), lr=args.learning_rate) # NOTE(js): manually changed this to Adam/SGD to test retrofit trainingoptimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
 
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10

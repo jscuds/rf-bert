@@ -79,8 +79,9 @@ def retrofit_hinge_loss(
     negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1)
     loss = positive_pair_distance + gamma - negative_pair_distance
     assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
+    loss_pre_clamp = loss.detach().clone()
     loss = loss.clamp(min=0) # shape: (batch_size,)
-    return loss.mean()
+    return loss.mean(), loss_pre_clamp.mean()
     # hinge loss: return max(0,x)
     
 
@@ -145,7 +146,7 @@ class RetrofitExperiment(Experiment):
         L = L_h + lambda * L_o
         """
         # TODO: how to get representations for each word? --> ANS(js): ElmoRetrofit.forward() outputs
-        hinge_loss = retrofit_hinge_loss(
+        hinge_loss, pre_clamp_hinge_loss = retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
             self.rf_gamma
@@ -153,7 +154,10 @@ class RetrofitExperiment(Experiment):
         orth_loss = orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
-        
+        # NOTE(js): logging 3 additional metrics to troubleshoot loss
+        self.metric_averages.update(f'{metrics_key}/Hinge_Loss', hinge_loss.item())
+        self.metric_averages.update(f'{metrics_key}/Pre_Clamp_Hinge_Loss', pre_clamp_hinge_loss.item())
+        self.metric_averages.update(f'{metrics_key}/Orthogonalization_Loss', orth_loss.item())
         return loss
 
 

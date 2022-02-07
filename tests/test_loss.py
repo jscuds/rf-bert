@@ -43,7 +43,7 @@ class TestRetrofitLoss:
         b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         assert retrofit_hinge_loss(
             a, a, b, b, 0
-        ) == 0.0
+        )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_equal_dist(self):
         """if positive pair and negative pair are an equal distance 
@@ -53,7 +53,7 @@ class TestRetrofitLoss:
         gamma = 5.0
         assert retrofit_hinge_loss(
             a, b, a, b, gamma
-        ) == gamma
+        )[0] == gamma #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_best_case_big_margin(self):
         """If positive pair are really close together, and negative
@@ -69,7 +69,7 @@ class TestRetrofitLoss:
         gamma = 20.0
         assert retrofit_hinge_loss(
             a1, a2, b1, b2, gamma
-        ) == 0.0
+        )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_worst_case(self):
         """If positive pair are really far apart, and negative
@@ -85,7 +85,7 @@ class TestRetrofitLoss:
         gamma = 10.0
         loss = retrofit_hinge_loss(
             a1, a2, b1, b2, gamma
-        )
+        )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > gamma
     
     def test_retrofit_hinge_clamp_batch(self):
@@ -105,5 +105,5 @@ class TestRetrofitLoss:
         gamma = 5.0
         loss = retrofit_hinge_loss(
             a1, a2, b1, b2, gamma
-        )
+        )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > 50

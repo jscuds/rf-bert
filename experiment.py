@@ -60,37 +60,6 @@ class Experiment(abc.ABC):
         self.metric_averages.clear_all()
         return metrics
 
-def retrofit_hinge_loss(
-        word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
-        word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
-        gamma: float
-    ) -> torch.Tensor:
-    """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
-    
-    Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
-    will be a small distance), and d_2 is the distance between w's representations in a
-    non-paraphrase pair (hopefully will be a relatively large distance).
-
-    And the []_+ operator is max(x, 0).
-    """
-    assert word_rep_pos_1.shape == word_rep_pos_2.shape
-    assert word_rep_neg_1.shape == word_rep_neg_2.shape
-    positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
-    negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1)
-    loss = positive_pair_distance + gamma - negative_pair_distance
-    assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
-    loss_pre_clamp = loss.detach().clone()
-    loss = loss.clamp(min=0) # shape: (batch_size,)
-    return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
-    # hinge loss: return max(0,x)
-    
-
-def orthogonalization_loss(M: torch.Tensor) -> torch.Tensor:
-    """L_o = ||I - M^T M||"""
-    assert len(M.shape) == 2
-    assert M.shape[0] == M.shape[1]
-    I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-    return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
@@ -125,6 +94,10 @@ class RetrofitExperiment(Experiment):
         #   --> I think loss is all we need for retrofitting -js
         self.metrics = {}
 
+        # NOTE(js): added lists to hold every individual pos_dist and neg_dist for wandb histogram
+        self.pos_dist_list = []
+        self.neg_dist_list = []
+
     @property
     def M(self) -> torch.nn.Parameter:
         """The orthogonal matrix, M, used for retrofitting."""
@@ -134,6 +107,42 @@ class RetrofitExperiment(Experiment):
             raise ValueError(f'cannot get orthogonal matrix for model {self.model_name_or_path}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
+
+
+    def retrofit_hinge_loss(self,
+            word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
+            word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
+            gamma: float
+        ) -> torch.Tensor:
+        """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
+        
+        Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
+        will be a small distance), and d_2 is the distance between w's representations in a
+        non-paraphrase pair (hopefully will be a relatively large distance).
+
+        And the []_+ operator is max(x, 0).
+        """
+        assert word_rep_pos_1.shape == word_rep_pos_2.shape
+        assert word_rep_neg_1.shape == word_rep_neg_2.shape
+        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
+        negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
+
+        self.pos_dist_list = self.pos_dist_list + positive_pair_distance.tolist() # appends list of distances for wandb.plot.histogram()
+        self.neg_dist_list = self.neg_dist_list + negative_pair_distance.tolist() 
+
+        loss = positive_pair_distance + gamma - negative_pair_distance
+        assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
+        loss_pre_clamp = loss.detach().clone()
+        loss = loss.clamp(min=0) # shape: (batch_size,)
+        return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
+        
+        
+    def orthogonalization_loss(self, M: torch.Tensor) -> torch.Tensor:
+        """L_o = ||I - M^T M||"""
+        assert len(M.shape) == 2
+        assert M.shape[0] == M.shape[1]
+        I = torch.eye(M.shape[0], dtype=float).to(M.device) 
+        return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
     def compute_loss_and_update_metrics(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
                      word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
@@ -146,12 +155,12 @@ class RetrofitExperiment(Experiment):
         L = L_h + lambda * L_o
         """
         # TODO: how to get representations for each word? --> ANS(js): ElmoRetrofit.forward() outputs
-        hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = retrofit_hinge_loss(
+        hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
             self.rf_gamma
         )
-        orth_loss = orthogonalization_loss(self.M)
+        orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
         # NOTE(js): logging 3 additional metrics to troubleshoot loss

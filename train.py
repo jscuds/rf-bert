@@ -247,7 +247,26 @@ def run_training_loop_retrofit(args: argparse.Namespace):
                 metrics_dict = experiment.compute_and_reset_metrics()
                 wandb.log(metrics_dict)
 
-            
+
+        #### BEGIN WANDB HISTOGRAM CODE ####
+        pos_word_pair_data = [[pos] for pos in experiment.pos_dist_list]
+        pos_word_pair_table = wandb.Table(data=pos_word_pair_data, columns=['pos_pair_dist'])
+        wandb.log({f'pos_pair_histogram_epoch_{epoch}': wandb.plot.histogram(pos_word_pair_table,"pos_pair_dist",
+                   title=f"Positive Pair Distance, Epoch {epoch}")})
+
+        neg_word_pair_data = [[neg] for neg in experiment.neg_dist_list]
+        neg_word_pair_table = wandb.Table(data=neg_word_pair_data, columns=['neg_pair_dist'])
+        wandb.log({f'neg_pair_histogram_epoch_{epoch}': wandb.plot.histogram(neg_word_pair_table,"neg_pair_dist",
+                   title=f"Negative Pair Distance, Epoch {epoch}")})
+
+        # DON'T FORGET TO RESET LISTS FOR STORING DISTANCES!!
+        logger.info(f'\nResetting experiment.pos_dist_list and experiment.neg_dist_list for new histograms')
+        experiment.pos_dist_list = []
+        experiment.neg_dist_list = []
+        logger.info(f'\nexperiment.pos_dist_list = {experiment.pos_dist_list}\nexperiment.neg_dist_list = {experiment.neg_dist_list}')
+        #### END WANDB HISTOGRAM CODE ####
+
+
         # Log elapsed time at end of each epoch    
         epoch_end_time = time.time()
         logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")

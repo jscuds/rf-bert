@@ -15,6 +15,7 @@ from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
+# TODO: replace print with logging statements
 # Globals and Imports
 
 STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
@@ -406,10 +407,10 @@ class ParaphraseDatasetElmo(Dataset):
         token2 = self._para_tuples[idx][3] 
         ntoken1 = neg_tuple[2] # index location of shared word in nsent1
         ntoken2 = neg_tuple[3]
-        return (torch.tensor(sent1).reshape(1,self.max_length,50), 
-                torch.tensor(sent2).reshape(1,self.max_length,50), 
-                torch.tensor(nsent1).reshape(1,self.max_length,50), 
-                torch.tensor(nsent2).reshape(1,self.max_length,50), 
+        return (torch.tensor(sent1).reshape(self.max_length,50), 
+                torch.tensor(sent2).reshape(self.max_length,50), 
+                torch.tensor(nsent1).reshape(self.max_length,50), 
+                torch.tensor(nsent2).reshape(self.max_length,50), 
                 token1, token2, ntoken1, ntoken2)
 
     # TODO add MRPC, PAN...

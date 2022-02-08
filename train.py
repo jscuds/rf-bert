@@ -1,17 +1,21 @@
 import argparse
 import copy
+import logging
 import random
 import time
+
+from pathlib import Path
 
 import numpy as np
 import torch
 import tqdm
 import wandb
 
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
+
+logger = logging.getLogger(__name__)
 
 def set_random_seed(r):
     random.seed(r)
@@ -20,7 +24,7 @@ def set_random_seed(r):
     torch.cuda.manual_seed(r)
 
 
-def parse_args() -> argparse.Namespace:
+def get_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Train a model.')
 
     parser.add_argument('experiment', type=str, 
@@ -29,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--random_seed', type=int, default=42)
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
+    parser.add_argument('--logs_per_epoch', type=int, default=5,
+        help='log metrics this number of times per epoch')
     parser.add_argument('--num_examples', type=int, default=20_000,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
@@ -40,22 +46,20 @@ def parse_args() -> argparse.Namespace:
         choices=['elmo'], help='name of model to use')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--rf_lambda', type=float, default=1,
+        help='lambda - regularization constant for retrofitting loss')
+    parser.add_argument('--rf_gamma', type=float, default=2,
+        help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--drop_last', type=bool, default=False,
         help='whether to drop remainder of last batch')
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
-    # TODO: additional args? dropout, 
-
-    args = parser.parse_args()
-    set_random_seed(args.random_seed)
+    # TODO: additional args? dropout...
     
-    return args
+    return parser
 
-def main():
-
-    args = parse_args()
-
+def run_training_loop(args: argparse.Namespace):
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
@@ -63,15 +67,13 @@ def main():
     }[args.experiment]
     experiment = experiment_cls(args)
 
-    model = experiment.model
-
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
 
-    # js NOTE: HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
+    # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
-    # TODO: refactor this .split() thing, it's not ideal
+    # TODO(jxm): refactor this .split() thing, it's not ideal
     train_dataset = copy.copy(experiment.dataset)
     test_dataset = copy.copy(experiment.dataset)
 
@@ -80,12 +82,9 @@ def main():
     test_dataset.split('test')
     test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
 
-    print('\n***CHECK DATASET LENGTHS:***')
-    print(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-    print(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
-
-    print('\n***CHECK self.tokenized_sentences.shape: ')
-    # print(f'quora.tokenized_sentences.shape: {quora.tokenized_sentences.shape}\nintended shape: {(quora.num_examples,2,40,50)}')
+    logger.info('\n***CHECK DATASET LENGTHS:***')
+    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
+    logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
 
 
     #########################################################
@@ -93,143 +92,184 @@ def main():
     #########################################################
 
 
+    day = time.strftime(f'%Y-%m-%d-%H%M')
+    exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
-    day = time.strftime(f'%Y-%m-%d')
     wandb.init(
-        name=f'{args.experiment}_{args.model_name_or_path}_{day}', # TODO: fix/restore TITLE
+        name=exp_name,
         project='rf-bert',
         entity='jscuds',
         notes=None,
         config=vars(args)
     )
 
+    # Log to a file and stdout
+    Path("logs/").mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(f'logs/{exp_name}.log'),
+            logging.StreamHandler()
+        ])
+
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model.to(device)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    loss_fn = experiment.compute_loss
+    experiment.model.to(device)
+    optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
 
     # use wandb.watch() to track gradients
-    # log_freq is setup to log 10 times per batch: num_examples//batch_size//10
-    #    which means it will log gradients every `log_freq` batches
-    log_freq = args.num_examples//args.batch_size//10
-    wandb.watch(model,criterion=loss_fn, log='all',log_freq=log_freq)
+    # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
+    #    which means it will log gradients every `watch_log_freq` batches
 
-    train_losses = []
-    test_losses = []
-    train_accs = []
-    test_accs = []
-    train_f1 = []
-    test_f1 = []
-    train_precision = []
-    test_precision = []
-    train_recall = []
-    test_recall = []
-    # TODO: cleanup metric computation
+    watch_log_freq = args.num_examples//args.batch_size//10
+    wandb.watch(experiment.model, log_freq=watch_log_freq)
 
-    t0 = time.time()
+    log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
+    logger.info(f'Logging metrics every {log_interval} training steps')
+
+    epoch_start_time = time.time()
     for epoch in range(args.epochs):
-        running_loss = 0
-        preds_accum = []
-        targets_accum = []
-
-        for batch, targets in tqdm.tqdm(train_dataloader, leave=False):
-            targets_accum.append(targets)
-            batch, targets = batch.to(device), targets.to(device)
-            preds = model(batch)
-
-            loss = loss_fn(preds.squeeze(), targets.float())
-
-            preds_sigmoid = torch.sigmoid(preds.squeeze())
-            preds_accum.append(preds_sigmoid.cpu().detach().numpy().round()) 
+        logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
+        for step, (batch, targets) in tqdm.tqdm(enumerate(train_dataloader), leave=False):
+            batch, targets = batch.to(device), targets.to(device) # TODO(js) retrofit_change
+            preds = experiment.model(batch) 
+            # TODO: cast to float in dataloader and remove this call to float()
+            train_loss = experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Train')
             
-            loss.backward()
+            train_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
 
-            running_loss += loss.cpu().item()
+            if step % log_interval == 0:
+                logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
+                # Compute eval metrics every `log_interval` batches
+                experiment.model.eval() # set model in eval mode for evaluation
+                with torch.no_grad():
+                    for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
+                        batch, targets = batch.to(device), targets.to(device)
+                        preds = experiment.model(batch)
+                        experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Test')
+                # Compute metrics, log, and reset
+                metrics_dict = experiment.compute_and_reset_metrics()
+                wandb.log(metrics_dict)
+                # Set model back in train mode to resume training
+                experiment.model.train() 
+            
+        # Log elapsed time at end of each epoch    
+        epoch_end_time = time.time()
+        logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")
+        wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
+
+        epoch_start_time = time.time()
+    logging.info(f'***** Training finished after {args.epochs} epochs *****')
 
 
-        # https://discuss.pytorch.org/t/calculating-f1-score-over-batched-data/83348/2    
-        preds_accum = np.concatenate(preds_accum)
-        targets_accum = np.concatenate(targets_accum)
-        epoch_f1 = f1_score(targets_accum, preds_accum, average='binary')
-        epoch_precision = precision_score(targets_accum, preds_accum, average='binary')
-        epoch_recall = recall_score(targets_accum, preds_accum, average='binary')
-        epoch_accuracy = accuracy_score(targets_accum, preds_accum)
-        
+def run_training_loop_retrofit(args: argparse.Namespace):
+    # dictionary that matches experiment argument to its respective class
+    experiment_cls = {
+        'retrofit': RetrofitExperiment,
+        'finetune': FinetuneExperiment
+    }[args.experiment]
+    experiment = experiment_cls(args)
 
-        train_losses.append(running_loss / len(train_dataloader.dataset))
-        train_accs.append(epoch_accuracy)
-        train_f1.append(epoch_f1)
-        train_precision.append(epoch_precision)
-        train_recall.append(epoch_recall)
+    #########################################################
+    ################## DATASET & DATALOADER #################
+    #########################################################
 
-        t1 = time.time()
-        print("="*20)
-        print(f"Epoch {epoch+1}/{args.epochs} Train Loss: {train_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{args.epochs} Train Accuracy: {train_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train F1: {train_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train Prec: {train_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Train Recall: {train_recall[-1]:>0.2f}" )
+    # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
+
+    train_dataset = experiment.dataset
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+
+    logger.info('\n***CHECK DATASET LENGTHS:***')
+    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
 
 
-        running_loss = 0
-        preds_accum = []
-        targets_accum = []
-
-        with torch.no_grad():
-            for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
-                # for batch, targets in test_dl:
-                targets_accum.append(targets)
-                batch, targets = batch.to(device), targets.to(device)
-                preds = model(batch)
-                loss = loss_fn(preds.squeeze(), targets.float())
-                preds_sigmoid = torch.sigmoid(preds.squeeze())
-                preds_accum.append(preds_sigmoid.cpu().round())
-
-                running_loss += loss.cpu().item()
+    #########################################################
+    ###################### TRAINING LOOP ####################
+    #########################################################
 
 
-        preds_accum = np.concatenate(preds_accum)
-        targets_accum = np.concatenate(targets_accum)
-        epoch_f1 = f1_score(targets_accum, preds_accum, average='binary')
-        epoch_precision = precision_score(targets_accum, preds_accum, average='binary')
-        epoch_recall = recall_score(targets_accum, preds_accum, average='binary')
-        epoch_accuracy = accuracy_score(targets_accum, preds_accum)
-        
-        test_losses.append(running_loss / len(test_dataloader.dataset))
-        test_accs.append(epoch_accuracy)
-        test_f1.append(epoch_f1)
-        test_precision.append(epoch_precision)
-        test_recall.append(epoch_recall)
+    day = time.strftime(f'%Y-%m-%d-%H%M')
+    exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
+    # WandB init and config (based on argument dictionaries in imports/globals cell)
+    wandb.init(
+        name=exp_name,
+        project='rf-bert',
+        entity='jscuds',
+        tags=['cluster',args.model_name_or_path,'rf-loss','sgd'],
+        notes="Job ID: <CLUSTER ID HERE> \nepochs=3\nSGD(batch_size 512);\nLR=1e-5", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
+        config=vars(args)
+    )
 
-        t1 = time.time()
-        print(f"Epoch {epoch+1}/{args.epochs} Test Loss: {test_losses[-1]:>0.5f}")
-        print(f"Epoch {epoch+1}/{args.epochs} Test Accuracy: {test_accs[-1]*100:>0.2f}%" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test F1: {test_f1[-1]*100:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test Prec: {test_precision[-1]:>0.2f}" )
-        print(f"Epoch {epoch+1}/{args.epochs} Test Recall: {test_recall[-1]:>0.2f}" )
-        
-        print(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(t1-t0)/60:>0.2f} min")
-        
+    # Log to a file and stdout
+    Path("logs/").mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=[
+            logging.FileHandler(f'logs/{exp_name}.log'),
+            logging.StreamHandler()
+        ])
 
-        # WandB log loss, accuracy, and F1 at end of each epoch
-        wandb.log({"Train/Loss": train_losses[-1],
-                "Train/Acc": train_accs[-1],
-                "Train/F1": train_f1[-1],
-                "Train/Recall": train_recall[-1],
-                "Train/Precision": train_precision[-1],
-                "Test/Loss": test_losses[-1],
-                "Test/Acc": test_accs[-1],
-                "Test/F1": test_f1[-1],
-                "Test/Recall": test_recall[-1],
-                "Test/Precision": test_precision[-1],
-                "Epoch Time": (t1-t0)/60})
+    # train on gpu if availble, set `device` as global variable
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    experiment.model.to(device)
+    optimizer = torch.optim.SGD(experiment.model.parameters(), lr=args.learning_rate) # NOTE(js): manually changed this to Adam/SGD to test retrofit training `optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)`
 
-        t0 = time.time()
+    # use wandb.watch() to track gradients
+    # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
+    #    which means it will log gradients every `watch_log_freq` batches
+
+    watch_log_freq = args.num_examples//args.batch_size//10
+    wandb.watch(experiment.model, log_freq=watch_log_freq)
+
+    log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
+    logger.info(f'Logging metrics every {log_interval} training steps')
+
+    epoch_start_time = time.time()
+    for epoch in range(args.epochs):
+        logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
+        for step, (batch) in tqdm.tqdm(enumerate(train_dataloader), leave=False):
+            # TODO(js) retrofit_change
+            sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
+            sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
+            
+            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2) 
+            
+            train_loss = experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
+            
+            train_loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            if step % log_interval == 0:
+                logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
+                # Compute metrics, log, and reset
+                metrics_dict = experiment.compute_and_reset_metrics()
+                wandb.log(metrics_dict)
+
+            
+        # Log elapsed time at end of each epoch    
+        epoch_end_time = time.time()
+        logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")
+        wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
+
+        epoch_start_time = time.time()
+    logging.info(f'***** Training finished after {args.epochs} epochs *****')
+    # Save M matrix
+    # TODO(js): save whole model?
+    torch.save(experiment.model.elmo._elmo_lstm._elmo_lstm.M,f'M_matrix_{device}_{day}.pt')
+
 
 if __name__ == '__main__':
-    main()
+    args: argparse.Namespace = get_argparser().parse_args()
+    set_random_seed(args.random_seed)
+    if args.experiment == 'finetune':
+        run_training_loop(args)
+    if args.experiment == 'retrofit':
+        run_training_loop_retrofit(args)
+
+    
+# TODO(js): after confirming retrofitting works; fix `run_training_loop()` to work for either case
+#   - update Dataset __getitem__ to return dictionary of kwargs
+#   - update models to receive kwargs passed from applicable Dataset objects
+    

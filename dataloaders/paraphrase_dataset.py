@@ -1,4 +1,5 @@
 import copy
+import logging
 import pickle
 import random
 import re
@@ -15,8 +16,7 @@ from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
-# TODO: replace print with logging statements
-# Globals and Imports
+logger = logging.getLogger(__name__)
 
 STOP_WORDS_LOC = 'stop_words_en.txt' #'NLTK_stop_words_en.txt'
 
@@ -55,11 +55,11 @@ class ParaphraseDatasetBert(Dataset):
         # load stop words from file
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
         self.stop_words_set = set([])
-        print(f'Generating stop words from {stop_words_file}...\n')
+        logger.info('Generating stop words from {stop_words_file}...\n')
         self._gen_stop_words(stop_words_file)
 
         # load quora, mrpc, etc.
-        print(f'Loading {para_dataset} dataset...\n')
+        logger.info(f'Loading {para_dataset} dataset...\n')
         self._load_dataset()
 
     def __len__(self) -> int:
@@ -186,14 +186,14 @@ class ParaphraseDatasetBert(Dataset):
 
 
             #### PRINT STATEMENTS FOR TESTING ####
-            #print(f'Total time: {(time.time() - t0):.2f} seconds')
-            print('\n#### PRINT STATEMENTS FOR TESTING ####')
-            print(f'Total pairs of questions: {len(sentence_id_pair_list)}')
-            print(f'`count` is {count}, should be {self.num_examples}')
-            print(f'`bad_count` is {bad_count}')
-            print(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(sentence_id_pair_list)*100:.2f}% of total')
-            print(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(sentence_id_pair_list)*100:.2f}% of total')
-            print('#### PRINT STATEMENTS FOR TESTING ####\n')
+            #logger.info(f'Total time: {(time.time() - t0):.2f} seconds')
+            logger.info('\n#### PRINT STATEMENTS FOR TESTING ####')
+            logger.info(f'Total pairs of questions: {len(sentence_id_pair_list)}')
+            logger.info(f'`count` is {count}, should be {self.num_examples}')
+            logger.info(f'`bad_count` is {bad_count}')
+            logger.info(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(sentence_id_pair_list)*100:.2f}% of total')
+            logger.info(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(sentence_id_pair_list)*100:.2f}% of total')
+            logger.info('#### PRINT STATEMENTS FOR TESTING ####\n')
             #### PRINT STATEMENTS FOR TESTING ####
 
             # map boolean list of labels to list of 0,1 ints
@@ -283,7 +283,7 @@ class ParaphraseDatasetBert(Dataset):
             corrupt_s = random.choice(list(sents_set)) 
             ind += 1
             if ind > 10:
-                # print("ind", ind)
+                # logger.info("ind", ind)
                 random.choice(self._neg_tuples)     # if there isn't a non-paraphrase: randomly return a negative tuple:
                 break                                   
         return (corrupt_s[0],target_sent_id,corrupt_s[1], target_sent_index)
@@ -336,15 +336,15 @@ class ParaphraseDatasetBert(Dataset):
         #self.desc_embed = self.desc_embed_padded = None
         pickle.dump(self.__dict__, f, pickle.HIGHEST_PROTOCOL)
         f.close()
-        print("Save data object as", filename)
+        logger.info("Save data object as", filename)
 
     #js copied directly from Shi
     def load(self, filename):
         f = open(filename,'rb')
         tmp_dict = pickle.load(f)
         self.__dict__.update(tmp_dict)
-        print("Loaded data object from", filename)
-        print("=====================\nCaution: need to reload desc embeddings.\n=====================")
+        logger.info("Loaded data object from", filename)
+        logger.info("=====================\nCaution: need to reload desc embeddings.\n=====================")
 
 class ParaphraseDatasetElmo(Dataset):
     """
@@ -380,11 +380,11 @@ class ParaphraseDatasetElmo(Dataset):
         # load stop words from file
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
         self.stop_words_set = set([])
-        print(f'Generating stop words from {stop_words_file}...\n')
+        logger.info(f'Generating stop words from {stop_words_file}...\n')
         self._gen_stop_words(stop_words_file)
 
         # load quora, mrpc, etc.
-        print(f'Loading {para_dataset} dataset...\n')
+        logger.info(f'Loading {para_dataset} dataset...\n')
         self._load_dataset()
 
     def __len__(self) -> int:
@@ -540,14 +540,14 @@ class ParaphraseDatasetElmo(Dataset):
                 count += 1  # NOTE: count should be incremented here to get correct num_examples
 
             #### PRINT STATEMENTS FOR TESTING ####
-            #print(f'Total time: {(time.time() - t0):.2f} seconds')
-            print('\n#### PRINT STATEMENTS FOR TESTING ####')
-            print(f'Total pairs of questions: {len(self.sentence_id_pair_list)}')
-            print(f'`count` is {count}, should be {self.num_examples}')
-            print(f'`bad_count` is {bad_count}')
-            print(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(self.sentence_id_pair_list)*100:.2f}% of total')
-            print(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(self.sentence_id_pair_list)*100:.2f}% of total')
-            print('#### PRINT STATEMENTS FOR TESTING ####\n')
+            #logger.info(f'Total time: {(time.time() - t0):.2f} seconds')
+            logger.info('\n#### PRINT STATEMENTS FOR TESTING ####')
+            logger.info(f'Total pairs of questions: {len(self.sentence_id_pair_list)}')
+            logger.info(f'`count` is {count}, should be {self.num_examples}')
+            logger.info(f'`bad_count` is {bad_count}')
+            logger.info(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(self.sentence_id_pair_list)*100:.2f}% of total')
+            logger.info(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(self.sentence_id_pair_list)*100:.2f}% of total')
+            logger.info('#### PRINT STATEMENTS FOR TESTING ####\n')
             #### PRINT STATEMENTS FOR TESTING ####
 
             # map boolean list of labels to list of 0,1 ints
@@ -641,7 +641,7 @@ class ParaphraseDatasetElmo(Dataset):
             corrupt_s = random.choice(list(sents_set)) 
             ind += 1
             if ind > 10:
-                # print("ind", ind)
+                # logger.info("ind", ind)
                 random.choice(self._neg_tuples)     # if there isn't a non-paraphrase: randomly return a negative tuple:
                 break                                   
         return (corrupt_s[0],target_sent_id,corrupt_s[1], target_sent_index)
@@ -724,12 +724,12 @@ class ParaphraseDatasetElmo(Dataset):
         #self.desc_embed = self.desc_embed_padded = None
         pickle.dump(self.__dict__, f, pickle.HIGHEST_PROTOCOL)
         f.close()
-        print("Save data object as", filename)
+        logger.info("Save data object as", filename)
 
     #js copied directly from Shi
     def load(self, filename):
         f = open(filename,'rb')
         tmp_dict = pickle.load(f)
         self.__dict__.update(tmp_dict)
-        print("Loaded data object from", filename)
-        print("=====================\nCaution: need to reload desc embeddings.\n=====================")
+        logger.info("Loaded data object from", filename)
+        logger.info("=====================\nCaution: need to reload desc embeddings.\n=====================")

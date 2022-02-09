@@ -76,20 +76,22 @@ def run_training_loop(args: argparse.Namespace):
     # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
     # TODO(js): refactor this .split() thing, it's not ideal
+    train_dataset = copy.copy(experiment.dataset)
     if args.experiment == 'finetune':
-        train_dataset = copy.copy(experiment.dataset)
         test_dataset = copy.copy(experiment.dataset)
-
         train_dataset.split('train')
-        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
         test_dataset.split('test')
+        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
         test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+        logger.info('\n***CHECK DATASET LENGTHS:***')
+        logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
+        logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
     else:
+        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
         test_dataloader = None
+        logger.info('\n***CHECK DATASET LENGTHS:***')
+        logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
 
-    logger.info('\n***CHECK DATASET LENGTHS:***')
-    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-    logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
 
 
     #########################################################
@@ -115,9 +117,9 @@ def run_training_loop(args: argparse.Namespace):
             logging.StreamHandler()
         ])
 
-    # Create folder for model saves
+    # Create folder for model saves (and parent models/ folder, if needed)
     model_folder = f"models/{exp_name}/"
-    Path(model_folder).mkdir(exist_ok=True)
+    Path(model_folder).mkdir(exist_ok=True, parents=True)
 
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -140,6 +142,7 @@ def run_training_loop(args: argparse.Namespace):
         for step, batch in tqdm.tqdm(enumerate(train_dataloader), leave=False):
             if args.experiment == 'finetune':
                 batch, targets = batch.to(device), targets.to(device) # TODO(js) retrofit_change
+                preds = experiment.model(batch)
                 # TODO: cast to float in dataloader and remove this call to float()
                 train_loss = experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Train')
             else:
@@ -147,7 +150,6 @@ def run_training_loop(args: argparse.Namespace):
                 sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
                 word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2)
                 train_loss = experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
-            preds = experiment.model(batch)
             
             train_loss.backward()
             optimizer.step()

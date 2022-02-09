@@ -97,6 +97,8 @@ class RetrofitExperiment(Experiment):
         # NOTE(js): added lists to hold every individual pos_dist and neg_dist for wandb histogram
         self.pos_dist_list = []
         self.neg_dist_list = []
+        self.diff_dist_list = [] #pos_dist - neg_dist
+        self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
 
     @property
     def M(self) -> torch.nn.Parameter:
@@ -129,9 +131,12 @@ class RetrofitExperiment(Experiment):
 
         self.pos_dist_list = self.pos_dist_list + positive_pair_distance.tolist() # appends list of distances for wandb.plot.histogram()
         self.neg_dist_list = self.neg_dist_list + negative_pair_distance.tolist() 
+        self.diff_dist_list = self.diff_dist_list + (positive_pair_distance - negative_pair_distance).tolist()
 
         loss = positive_pair_distance + gamma - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
+        self.diff_dist_plus_margin_list = self.diff_dist_plus_margin_list + loss.tolist()
+
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
         return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()

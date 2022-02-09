@@ -59,6 +59,15 @@ def get_argparser() -> argparse.ArgumentParser:
     
     return parser
 
+
+def create_wandb_histogram(list_of_values: list, description: str, epoch: int):
+    lower_description = '_'.join(description.lower().split())
+    data = [[val] for val in list_of_values]
+    table = wandb.Table(data=data, columns=[lower_description])
+    wandb.log({f'{lower_description}_epoch_{epoch+1}': wandb.plot.histogram(table,lower_description,
+                title=f"{description} Histogram, Epoch {epoch+1}")})
+
+
 def run_training_loop(args: argparse.Namespace):
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
@@ -198,7 +207,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
         project='rf-bert',
         entity='jscuds',
         tags=['cluster',args.model_name_or_path,'rf-loss','sgd'],
-        notes="Job ID: <CLUSTER ID HERE> \nepochs=3\nSGD(batch_size 512);\nLR=1e-5", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
+        notes="Job ID: <CLUSTER ID HERE> \nhistogram run\nelmo frozen\nepochs=3\ngamma=3\nSGD(batch_size 512);\nLR=1e-4", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
         config=vars(args)
     )
 
@@ -249,21 +258,19 @@ def run_training_loop_retrofit(args: argparse.Namespace):
 
 
         #### BEGIN WANDB HISTOGRAM CODE ####
-        pos_word_pair_data = [[pos] for pos in experiment.pos_dist_list]
-        pos_word_pair_table = wandb.Table(data=pos_word_pair_data, columns=['pos_pair_dist'])
-        wandb.log({f'pos_pair_histogram_epoch_{epoch}': wandb.plot.histogram(pos_word_pair_table,"pos_pair_dist",
-                   title=f"Positive Pair Distance, Epoch {epoch}")})
-
-        neg_word_pair_data = [[neg] for neg in experiment.neg_dist_list]
-        neg_word_pair_table = wandb.Table(data=neg_word_pair_data, columns=['neg_pair_dist'])
-        wandb.log({f'neg_pair_histogram_epoch_{epoch}': wandb.plot.histogram(neg_word_pair_table,"neg_pair_dist",
-                   title=f"Negative Pair Distance, Epoch {epoch}")})
+        create_wandb_histogram(experiment.pos_dist_list, "Positive Pair Distance", epoch)
+        create_wandb_histogram(experiment.neg_dist_list, "Negative Pair Distance", epoch)
+        create_wandb_histogram(experiment.diff_dist_list, "Positive minus Negative Pair Distance", epoch)
+        create_wandb_histogram(experiment.diff_dist_plus_margin_list, "Positive minus Negative Pair Dist plus Margin", epoch)
 
         # DON'T FORGET TO RESET LISTS FOR STORING DISTANCES!!
-        logger.info(f'\nResetting experiment.pos_dist_list and experiment.neg_dist_list for new histograms')
+        logger.info(f'\nResetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
         experiment.pos_dist_list = []
         experiment.neg_dist_list = []
-        logger.info(f'\nexperiment.pos_dist_list = {experiment.pos_dist_list}\nexperiment.neg_dist_list = {experiment.neg_dist_list}')
+        experiment.diff_dist_list = [] #pos_dist - neg_dist
+        experiment.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
+        logger.info(f'''\nexperiment.pos_dist_list  = {experiment.pos_dist_list}\n experiment.neg_dist_list = {experiment.neg_dist_list}
+                        \nexperiment.diff_dist_list = {experiment.diff_dist_list}\nexperiment.diff_dist_plus_margin_list = {experiment.diff_dist_plus_margin_list}''')
         #### END WANDB HISTOGRAM CODE ####
 
 

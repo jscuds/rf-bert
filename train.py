@@ -53,9 +53,11 @@ def get_argparser() -> argparse.ArgumentParser:
     #     otherwise, omit the flag if you want it to be False
     #     ex1.  `python train.py --drop_last` will drop the remainder of the last batch in the dataloaders.
     #     ex2.  `python train.py --req_grad_elmo`` will make ELMo weights update
-    parser.add_argument('--drop_last', type=bool, default=False, action='store_true',
+    #     Refs: https://stackoverflow.com/questions/52403065/argparse-optional-boolean
+    #           https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+    parser.add_argument('--drop_last', default=False, action='store_true',
         help='whether to drop remainder of last batch')
-    parser.add_argument('--req_grad_elmo', type=bool, default=False, action='store_true',
+    parser.add_argument('--req_grad_elmo', default=False, action='store_true',
         help='ELMo requires_grad means don\'t freeze weights during retrofit training')
 
 

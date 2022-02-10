@@ -63,7 +63,6 @@ class TestQuoraBert:
         assert isinstance(test_ntoken2, int)
 
 
-
 class TestQuoraElmo:
     quora = ParaphraseDatasetElmo(para_dataset = 'quora', model_name = 'elmo', num_examples = 20000, 
                     max_length = 40, stop_words_file = './stop_words_en.txt', r1 =0.5, seed = 42) # all of these are seed dependent

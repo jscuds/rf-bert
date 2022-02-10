@@ -48,10 +48,16 @@ def get_argparser() -> argparse.ArgumentParser:
         help='lambda - regularization constant for retrofitting loss')
     parser.add_argument('--rf_gamma', type=float, default=2,
         help='gamma - margin constant for retrofitting loss')
-    parser.add_argument('--drop_last', type=bool, default=False,
+
+    # for these boolean arguments, append the flag if you want it to be `True`
+    #     otherwise, omit the flag if you want it to be False
+    #     ex1.  `python train.py --drop_last` will drop the remainder of the last batch in the dataloaders.
+    #     ex2.  `python train.py --req_grad_elmo`` will make ELMo weights update
+    parser.add_argument('--drop_last', type=bool, default=False, action='store_true',
         help='whether to drop remainder of last batch')
-    parser.add_argument('--req_grad_elmo', type=bool, default=False,
-        help='ELMo requires_grad = False means freeze weights during retrofit training')
+    parser.add_argument('--req_grad_elmo', type=bool, default=False, action='store_true',
+        help='ELMo requires_grad means don\'t freeze weights during retrofit training')
+
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
@@ -79,17 +85,6 @@ def run_training_loop(args: argparse.Namespace):
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
-
-    # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
-
-    # TODO(jxm): refactor this .split() thing, it's not ideal
-    # train_dataset = copy.copy(experiment.dataset)
-    # test_dataset = copy.copy(experiment.dataset)
-
-    # train_dataset.split('train')
-    # train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
-    # test_dataset.split('test')
-    # test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
 
     train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
                                                           shuffle=True, drop_last=args.drop_last, 
@@ -189,8 +184,6 @@ def run_training_loop_retrofit(args: argparse.Namespace):
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
-
-    # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
     train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
                                                           shuffle=True, drop_last=args.drop_last, 

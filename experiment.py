@@ -201,8 +201,7 @@ class FinetuneExperiment(Experiment):
         )
         self.dataset = QuoraDataset(
             para_dataset='quora', num_examples = args.num_examples,
-            max_length=args.max_length, train_test_split=args.train_test_split,
-            seed=args.random_seed
+            max_length=args.max_length, seed=args.random_seed
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
         self.metric_averages = TensorRunningAverages()

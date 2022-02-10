@@ -215,7 +215,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
         project='rf-bert',
         entity='jscuds',
         tags=['cluster',args.model_name_or_path,'rf-loss','sgd'], #UNFROZEN_ELMO if necessary
-        notes="Job ID: <CLUSTER ID HERE> \nelmo frozen\nepochs=10\ngamma=3\nSGD(batch_size 128);\nLR=5e-3", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
+        notes="Job ID: <CLUSTER ID HERE> \nQUICK RUN TO VALIDATE TRAIN/TEST SPLIT WORKING.\nelmo frozen\nepochs=3\ngamma=3\nSGD(batch_size 128);\nLR=5e-3", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
         config=vars(args)
     )
 
@@ -264,7 +264,7 @@ def run_training_loop_retrofit(args: argparse.Namespace):
                 # Compute metrics, log, and reset
                 experiment.model.eval()
                 with torch.no_grad():
-                    for batch in tqdm.tqdm(enumerate(test_dataloader), leave=False):
+                    for batch in tqdm.tqdm(test_dataloader, leave=False):
                         sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                         sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
                         

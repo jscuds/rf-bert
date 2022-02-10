@@ -75,7 +75,7 @@ class RetrofitExperiment(Experiment):
         self.model = (
             ElmoRetrofit(
                 num_output_representations = 1, 
-                requires_grad=False,
+                requires_grad=args.req_grad_elmo, #default = False --> Frozen
                 dropout=0,
             )
         )
@@ -129,13 +129,15 @@ class RetrofitExperiment(Experiment):
         positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
         negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
 
-        self.pos_dist_list = self.pos_dist_list + positive_pair_distance.tolist() # appends list of distances for wandb.plot.histogram()
-        self.neg_dist_list = self.neg_dist_list + negative_pair_distance.tolist() 
-        self.diff_dist_list = self.diff_dist_list + (positive_pair_distance - negative_pair_distance).tolist()
-
         loss = positive_pair_distance + gamma - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
-        self.diff_dist_plus_margin_list = self.diff_dist_plus_margin_list + loss.tolist()
+        
+        # if model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
+        if self.model.training:
+            self.pos_dist_list = self.pos_dist_list + positive_pair_distance.tolist()
+            self.neg_dist_list = self.neg_dist_list + negative_pair_distance.tolist() 
+            self.diff_dist_list = self.diff_dist_list + (positive_pair_distance - negative_pair_distance).tolist()
+            self.diff_dist_plus_margin_list = self.diff_dist_plus_margin_list + loss.tolist()
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)

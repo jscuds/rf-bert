@@ -29,7 +29,7 @@ PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 
 class ParaphraseDatasetBert(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'bert-base-uncased', 
-                 num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
+                 num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset
@@ -351,7 +351,7 @@ class ParaphraseDatasetElmo(Dataset):
     Creates a Dataset object for retrofitting ELMo with paraphrase examples.
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
-                 num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
+                 num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset

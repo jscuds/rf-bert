@@ -1,19 +1,17 @@
 import argparse
-import copy
 import logging
 import random
 import time
-
 from pathlib import Path
 
 import numpy as np
 import torch
 import tqdm
 import wandb
-
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
+from utils import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ def get_argparser() -> argparse.ArgumentParser:
         help='number of training epochs')
     parser.add_argument('--logs_per_epoch', type=int, default=5,
         help='log metrics this number of times per epoch')
-    parser.add_argument('--num_examples', type=int, default=20_000,
+    parser.add_argument('--num_examples', type=int, default=25_000,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
         help='max length of each sequence for truncation')
@@ -52,6 +50,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--drop_last', type=bool, default=False,
         help='whether to drop remainder of last batch')
+    parser.add_argument('--req_grad_elmo', type=bool, default=False,
+        help='ELMo requires_grad = False means freeze weights during retrofit training')
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
@@ -83,17 +83,22 @@ def run_training_loop(args: argparse.Namespace):
     # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
     # TODO(jxm): refactor this .split() thing, it's not ideal
-    train_dataset = copy.copy(experiment.dataset)
-    test_dataset = copy.copy(experiment.dataset)
+    # train_dataset = copy.copy(experiment.dataset)
+    # test_dataset = copy.copy(experiment.dataset)
 
-    train_dataset.split('train')
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
-    test_dataset.split('test')
-    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+    # train_dataset.split('train')
+    # train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+    # test_dataset.split('test')
+    # test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
 
-    logger.info('\n***CHECK DATASET LENGTHS:***')
-    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-    logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
+    train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
+                                                          shuffle=True, drop_last=args.drop_last, 
+                                                          train_split=args.train_test_split, seed=args.random_seed)
+
+
+    logger.info('\n***CHECK DATALOADER LENGTHS:***')
+    logger.info(f'len(train_dataloader) = {len(train_dataloader)}')
+    logger.info(f'len(test_dataloader) = {len(test_dataloader)}')
 
 
     #########################################################
@@ -187,11 +192,14 @@ def run_training_loop_retrofit(args: argparse.Namespace):
 
     # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
 
-    train_dataset = experiment.dataset
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
+    train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
+                                                          shuffle=True, drop_last=args.drop_last, 
+                                                          train_split=args.train_test_split, seed=args.random_seed)
 
-    logger.info('\n***CHECK DATASET LENGTHS:***')
-    logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
+
+    logger.info('\n***CHECK DATALOADER LENGTHS:***')
+    logger.info(f'len(train_dataloader) = {len(train_dataloader)}')
+    logger.info(f'len(test_dataloader) = {len(test_dataloader)}')
 
 
     #########################################################
@@ -206,8 +214,8 @@ def run_training_loop_retrofit(args: argparse.Namespace):
         name=exp_name,
         project='rf-bert',
         entity='jscuds',
-        tags=['cluster',args.model_name_or_path,'rf-loss','sgd'],
-        notes="Job ID: <CLUSTER ID HERE> \nhistogram run\nelmo frozen\nepochs=3\ngamma=3\nSGD(batch_size 512);\nLR=1e-4", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
+        tags=['cluster',args.model_name_or_path,'rf-loss','sgd'], #UNFROZEN_ELMO if necessary
+        notes="Job ID: <CLUSTER ID HERE> \nelmo frozen\nepochs=10\ngamma=3\nSGD(batch_size 128);\nLR=5e-3", #'loss.sum()\nlogs_per_epoch=1\nRan with *Adam optimizer* and reported "best" hyperparameters  rf_gamma=3, rf_lambda=1, epochs=10, lr=0.005, BUT batch_size=512'
         config=vars(args)
     )
 
@@ -250,14 +258,27 @@ def run_training_loop_retrofit(args: argparse.Namespace):
             train_loss.backward()
             optimizer.step()
             optimizer.zero_grad()
+            
             if step % log_interval == 0:
                 logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
                 # Compute metrics, log, and reset
+                experiment.model.eval()
+                with torch.no_grad():
+                    for batch in tqdm.tqdm(enumerate(test_dataloader), leave=False):
+                        sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
+                        sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
+                        
+                        word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2) 
+                        
+                        experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
+                # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics()
                 wandb.log(metrics_dict)
-
+                # Set model back in train mode to resume training
+                experiment.model.train() 
 
         #### BEGIN WANDB HISTOGRAM CODE ####
+        # only plot for training data (see experiment.py --> lists only populate if model is training)
         create_wandb_histogram(experiment.pos_dist_list, "Positive Pair Distance", epoch)
         create_wandb_histogram(experiment.neg_dist_list, "Negative Pair Distance", epoch)
         create_wandb_histogram(experiment.diff_dist_list, "Positive minus Negative Pair Distance", epoch)

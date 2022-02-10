@@ -39,39 +39,41 @@ class QuoraDataset(Dataset):
         # load quora, mrpc, etc.
         print(f'Loading {para_dataset} dataset...\n')
         self._load_dataset()
-        self._train_test_split(train_test_split)
-        self.split('train')
+        # self._train_test_split(train_test_split)
+        # self.split('train')
 
-    def split(self, train_or_test: str = 'train'):
-        self._split = train_or_test
-        print(f'{self.para_dataset} split set to {self._split}')
+    # def split(self, train_or_test: str = 'train'):
+    #     self._split = train_or_test
+    #     print(f'{self.para_dataset} split set to {self._split}')
 
     def __len__(self) -> int:
-        if self._split == 'train':
-            return len(self.train_labels) 
+        return len(self.labels)
+        # if self._split == 'train':
+        #     return len(self.train_labels) 
 
-        if self._split == 'test':
-            return len(self.test_labels)
+        # if self._split == 'test':
+        #     return len(self.test_labels)
         # return len(self.labels) #changed from ParaDataset
 
     # based on Shi's gen_batch
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self._split == 'train':
-            # self.train_sents has shape B x 2 x self.max_length x word_length==50
-            return self.train_sents[idx,:,:,:], torch.tensor(self.train_labels[idx])
+        return self.tokenized_sentences[idx,:,:,:], torch.tensor(self.labels[idx])
+        # if self._split == 'train':
+        #     # self.train_sents has shape B x 2 x self.max_length x word_length==50
+        #     return self.train_sents[idx,:,:,:], torch.tensor(self.train_labels[idx])
 
-            # return torch.tensor(self.train_sents[idx].squeeze()), torch.tensor(self.train_labels[idx]) 
-            # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
+        #     # return torch.tensor(self.train_sents[idx].squeeze()), torch.tensor(self.train_labels[idx]) 
+        #     # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
 
-        if self._split == 'test':
-            # self.test_sents has shape B x 2 x self.max_length x word_length==50
+        # if self._split == 'test':
+        #     # self.test_sents has shape B x 2 x self.max_length x word_length==50
 
-            return self.test_sents[idx,:,:,:], torch.tensor(self.test_labels[idx]) 
+        #     return self.test_sents[idx,:,:,:], torch.tensor(self.test_labels[idx]) 
 
-            # return torch.tensor(self.test_sents[idx].squeeze()), torch.tensor(self.test_labels[idx]) 
-            # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
+        #     # return torch.tensor(self.test_sents[idx].squeeze()), torch.tensor(self.test_labels[idx]) 
+        #     # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
 
-        # return torch.tensor(self.tokenized_sentences[idx].ids), torch.tensor(self.labels[idx])
+        # # return torch.tensor(self.tokenized_sentences[idx].ids), torch.tensor(self.labels[idx])
     
     # TODO add MRPC, PAN...
     def _load_dataset(self):
@@ -165,28 +167,37 @@ class QuoraDataset(Dataset):
 
             # map boolean list of labels to list of 0,1 ints
             self.labels = list(map(int, label_list))
-
-    def _train_test_split(self, train_test_split: float=0.8):
-        """
-        If called, creates train/test splits of sents/labels.
-        """
-        # q = torch.stack((torch.cat(s1_tokenized),torch.cat(s2_tokenized)),dim=1)
-        # SHAPE: num_examples x (s1,s2) x max_length x char length (50)
-        # SHAPE: num_examples x 2       x 40         x 50
-        self.tokenized_sentences = torch.stack((torch.cat(self.s1_tokenized), 
-                                                torch.cat(self.s2_tokenized)), 
-                                                dim=1)
-        try:
+            
+            # q = torch.stack((torch.cat(s1_tokenized),torch.cat(s2_tokenized)),dim=1)
+            # SHAPE: num_examples x (s1,s2) x max_length x char length (50)
+            # SHAPE: num_examples x 2       x 40         x 50
+            self.tokenized_sentences = torch.stack((torch.cat(self.s1_tokenized), 
+                                                    torch.cat(self.s2_tokenized)), 
+                                                    dim=1)
             assert self.tokenized_sentences.shape == (self.num_examples,2,40,50)
-        except AssertionError:
-            print(f'self.tokenized_sentences.shape: {self.tokenized_sentences.shape}\nintended shape: {(self.num_examples,2,40,50)}')
+            
+
+    # def _train_test_split(self, train_test_split: float=0.8):
+    #     """
+    #     If called, creates train/test splits of sents/labels.
+    #     """
+    #     # q = torch.stack((torch.cat(s1_tokenized),torch.cat(s2_tokenized)),dim=1)
+    #     # SHAPE: num_examples x (s1,s2) x max_length x char length (50)
+    #     # SHAPE: num_examples x 2       x 40         x 50
+    #     self.tokenized_sentences = torch.stack((torch.cat(self.s1_tokenized), 
+    #                                             torch.cat(self.s2_tokenized)), 
+    #                                             dim=1)
+    #     try:
+    #         assert self.tokenized_sentences.shape == (self.num_examples,2,40,50)
+    #     except AssertionError:
+    #         print(f'self.tokenized_sentences.shape: {self.tokenized_sentences.shape}\nintended shape: {(self.num_examples,2,40,50)}')
 
 
-        self.train_sents, self.test_sents, self.train_labels, self.test_labels = (
-            sklearn.model_selection.train_test_split(
-                self.tokenized_sentences, self.labels, train_size=train_test_split, test_size=1-train_test_split, 
-                random_state=self.seed, shuffle = True, stratify = None
-            )
-        )
-        print(f'Training Size: {len(self.train_sents)}')
-        print(f'Testing Size: {len(self.test_sents)}')
+    #     self.train_sents, self.test_sents, self.train_labels, self.test_labels = (
+    #         sklearn.model_selection.train_test_split(
+    #             self.tokenized_sentences, self.labels, train_size=train_test_split, test_size=1-train_test_split, 
+    #             random_state=self.seed, shuffle = True, stratify = None
+    #         )
+    #     )
+    #     print(f'Training Size: {len(self.train_sents)}')
+    #     print(f'Testing Size: {len(self.test_sents)}')

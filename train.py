@@ -28,6 +28,8 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument('experiment', type=str, choices=('retrofit', 'finetune'))
 
+    parser.add_argument('--optimizer', type=str, default='sgd', choices=('adam', 'sgd'),
+        help='Optimizer to use for training')
     parser.add_argument('--random_seed', type=int, default=42)
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
@@ -71,15 +73,6 @@ def get_argparser() -> argparse.ArgumentParser:
     # TODO: additional model args? dropout...
     
     return parser
-
-
-def create_wandb_histogram(list_of_values: list, description: str, epoch: int):
-    lower_description = '_'.join(description.lower().split())
-    data = [[val] for val in list_of_values]
-    table = wandb.Table(data=data, columns=[lower_description])
-    wandb.log({f'{lower_description}_epoch_{epoch+1}': wandb.plot.histogram(table,lower_description,
-                title=f"{description} Histogram, Epoch {epoch+1}")})
-
 
 def run_training_loop(args: argparse.Namespace) -> str:
     """Runs model-training experiment defined by `args`.
@@ -137,7 +130,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment.model.to(device)
-    optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
+
+    if args.optimizer == 'adam':
+        optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
+    elif args.optimizer == 'sgd':
+        optimizer = torch.optim.SGD(experiment.model.parameters(), lr=args.learning_rate)
+    else:
+        raise ValueError(f'unsupported optimizer {args.optimizer}')
 
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10

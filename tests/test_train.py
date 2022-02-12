@@ -22,5 +22,4 @@ class TestTrainEnd2End:
         args = get_argparser().parse_args(
             ['retrofit', '--epochs', '2', '--num_examples', '8']
         )
-        with pytest.raises(Exception):
-            run_training_loop(args)
+        run_training_loop(args)

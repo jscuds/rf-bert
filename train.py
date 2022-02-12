@@ -1,19 +1,18 @@
 import argparse
-import copy
 import logging
 import random
+import os
 import time
-
 from pathlib import Path
 
 import numpy as np
 import torch
 import tqdm
 import wandb
-
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
+from utils import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ def get_argparser() -> argparse.ArgumentParser:
         type=int, help='number of epochs between model saves')
     parser.add_argument('--logs_per_epoch', type=int, default=5,
         help='log metrics this number of times per epoch')
-    parser.add_argument('--num_examples', type=int, default=20_000,
+    parser.add_argument('--num_examples', type=int, default=25_000,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
         help='max length of each sequence for truncation')
@@ -52,14 +51,33 @@ def get_argparser() -> argparse.ArgumentParser:
         help='lambda - regularization constant for retrofitting loss')
     parser.add_argument('--rf_gamma', type=float, default=2,
         help='gamma - margin constant for retrofitting loss')
-    parser.add_argument('--drop_last', type=bool, default=False,
+
+    # for these boolean arguments, append the flag if you want it to be `True`
+    #     otherwise, omit the flag if you want it to be False
+    #     ex1.  `python train.py --drop_last` will drop the remainder of the last batch in the dataloaders.
+    #     ex2.  `python train.py --req_grad_elmo`` will make ELMo weights update
+    #     Refs: https://stackoverflow.com/questions/52403065/argparse-optional-boolean
+    #           https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+    parser.add_argument('--drop_last', default=False, action='store_true',
         help='whether to drop remainder of last batch')
+    parser.add_argument('--req_grad_elmo', default=False, action='store_true',
+        help='ELMo requires_grad means don\'t freeze weights during retrofit training')
+
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
     # TODO: additional args? dropout...
     
     return parser
+
+
+def create_wandb_histogram(list_of_values: list, description: str, epoch: int):
+    lower_description = '_'.join(description.lower().split())
+    data = [[val] for val in list_of_values]
+    table = wandb.Table(data=data, columns=[lower_description])
+    wandb.log({f'{lower_description}_epoch_{epoch+1}': wandb.plot.histogram(table,lower_description,
+                title=f"{description} Histogram, Epoch {epoch+1}")})
+
 
 def run_training_loop(args: argparse.Namespace):
     # dictionary that matches experiment argument to its respective class
@@ -73,25 +91,13 @@ def run_training_loop(args: argparse.Namespace):
     ################## DATASET & DATALOADER #################
     #########################################################
 
-    # NOTE(js): HAD TO COPY QUORA BECAUSE CHANGING THE SPLIT CHANGED THE DATALOADERS.
+    train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
+                                                          shuffle=True, drop_last=args.drop_last, 
+                                                          train_split=args.train_test_split, seed=args.random_seed)
 
-    # TODO(js): refactor this .split() thing, it's not ideal
-    train_dataset = copy.copy(experiment.dataset)
-    if args.experiment == 'finetune':
-        test_dataset = copy.copy(experiment.dataset)
-        train_dataset.split('train')
-        test_dataset.split('test')
-        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
-        test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
-        logger.info('\n***CHECK DATASET LENGTHS:***')
-        logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-        logger.info(f'len(test_dataloader.dataset) = {len(test_dataloader.dataset)}')
-    else:
-        train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=args.drop_last, pin_memory=True)
-        test_dataloader = None
-        logger.info('\n***CHECK DATASET LENGTHS:***')
-        logger.info(f'len(train_dataloader.dataset) = {len(train_dataloader.dataset)}')
-
+    logger.info('\n***CHECK DATALOADER LENGTHS:***')
+    logger.info(f'len(train_dataloader) = {len(train_dataloader)}')
+    logger.info(f'len(test_dataloader) = {len(test_dataloader)}')
 
 
     #########################################################
@@ -141,6 +147,7 @@ def run_training_loop(args: argparse.Namespace):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
         for step, batch in tqdm.tqdm(enumerate(train_dataloader), leave=False):
             if args.experiment == 'finetune':
+                batch, targets = batch
                 batch, targets = batch.to(device), targets.to(device) # TODO(js) retrofit_change
                 preds = experiment.model(batch)
                 # TODO: cast to float in dataloader and remove this call to float()
@@ -174,7 +181,7 @@ def run_training_loop(args: argparse.Namespace):
         if (epoch+1) % args.epochs_per_model_save == 0:
             checkpoint = {
                 'step': step, 
-                'model': model.state_dict()
+                'model': experiment.model.state_dict()
             }
             checkpoint_path = os.path.join(
                 model_folder, f'{epoch}_epochs.pth')   
@@ -192,7 +199,7 @@ def run_training_loop(args: argparse.Namespace):
     # Save final model
     final_save_path = os.path.join(
         model_folder, f'final.pth')   
-    torch.save({ 'model': model.state_dict() }, final_save_path)
+    torch.save({ 'model': experiment.model.state_dict() }, final_save_path)
     logging.info('Final model saved to %s', final_save_path)
     # Save M matrix
     # TODO(js): save whole model?

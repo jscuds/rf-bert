@@ -3,6 +3,9 @@
 *.docx
 local-misc/
 
+*.pt
+models/
+
 # Cluster directories and files
 tmpwdir/
 wandb/

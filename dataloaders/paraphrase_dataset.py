@@ -29,7 +29,7 @@ PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 
 class ParaphraseDatasetBert(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'bert-base-uncased', 
-                 num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
+                 num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset
@@ -351,7 +351,7 @@ class ParaphraseDatasetElmo(Dataset):
     Creates a Dataset object for retrofitting ELMo with paraphrase examples.
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
-                 num_examples: int = 20000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
+                 num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset
@@ -520,10 +520,6 @@ class ParaphraseDatasetElmo(Dataset):
                 # update self._token_to_sents
                 # js self._token_to_sents is a dict {token_tuple: {(sent_id, index of token corresponding to token_tuple)}}  
                 #   *NOTE* `index` is the index of the word in the tokenized sentence (`s1_tokenized`)
-                
-                # ***********STOPPED HERE**************
-                # TODO TRIPLE CHECK YOU'RE GETTING WHAT YOU WANT FROM ._overlap()
-                # ***********STOPPED HERE**************
 
                 for index, token_tuple in enumerate(s1_tuple):
 
@@ -692,13 +688,6 @@ class ParaphraseDatasetElmo(Dataset):
     def _is_paraphrase(self, s1_id, s2_id):
         return (s1_id,s2_id) in self._paraphrase_sets
 
-    # def _tensor_to_flattened_tuple(self,sent: Tensor) -> Tuple[int,...]:
-    #     '''
-    #     Converts a single tensor to a tuple with length of flattened tensor.
-    #     '''
-    #     assert len(sent.shape) == 3
-    #     return tuple(sent.flatten().tolist())
-
     def _tensor_to_token_tuples(self, sent: Tensor) -> Tuple[Tuple[int,...]]:
         '''
         Converts a tensor to either 
@@ -718,18 +707,20 @@ class ParaphraseDatasetElmo(Dataset):
             assert sent.shape[0] == 1
             return tuple(sent.squeeze().tolist())
 
-    #js copied directly from Shi
-    def save(self, filename):
-        f = open(filename,'wb')
-        #self.desc_embed = self.desc_embed_padded = None
-        pickle.dump(self.__dict__, f, pickle.HIGHEST_PROTOCOL)
-        f.close()
-        logger.info("Save data object as", filename)
+    # TODO(js): ability to save the dataset after it's created?  The below code copied from Shi doesn't work
+    
+    # #js copied directly from Shi
+    # def save(self, filename):
+    #     f = open(filename,'wb')
+    #     #self.desc_embed = self.desc_embed_padded = None
+    #     pickle.dump(self.__dict__, f, pickle.HIGHEST_PROTOCOL)
+    #     f.close()
+    #     print("Save data object as", filename)
 
-    #js copied directly from Shi
-    def load(self, filename):
-        f = open(filename,'rb')
-        tmp_dict = pickle.load(f)
-        self.__dict__.update(tmp_dict)
-        logger.info("Loaded data object from", filename)
-        logger.info("=====================\nCaution: need to reload desc embeddings.\n=====================")
+    # #js copied directly from Shi
+    # def load(self, filename):
+    #     f = open(filename,'rb')
+    #     tmp_dict = pickle.load(f)
+    #     self.__dict__.update(tmp_dict)
+    #     print("Loaded data object from", filename)
+    #     print("=====================\nCaution: need to reload desc embeddings.\n=====================")

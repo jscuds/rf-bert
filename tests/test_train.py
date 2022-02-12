@@ -1,4 +1,5 @@
 import os
+import shutil
 
 import pytest
 
@@ -13,7 +14,8 @@ class TestTrainEnd2End:
         args = get_argparser().parse_args(
             ['finetune', '--epochs', '2', '--num_examples', '8']
         )
-        run_training_loop(args)
+        model_folder = run_training_loop(args)
+        shutil.rmtree(model_folder) # delete model saves after test
 
 
     def test_retrofit_quora_tiny(self):
@@ -22,4 +24,6 @@ class TestTrainEnd2End:
         args = get_argparser().parse_args(
             ['retrofit', '--epochs', '2', '--num_examples', '8']
         )
-        run_training_loop(args)
+        model_folder = run_training_loop(args)
+        shutil.rmtree(model_folder) # delete model saves after test
+

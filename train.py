@@ -26,8 +26,7 @@ def set_random_seed(r):
 def get_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Train a model.')
 
-    parser.add_argument('experiment', type=str, 
-        choices=('retrofit','finetune'))
+    parser.add_argument('experiment', type=str, choices=('retrofit', 'finetune'))
 
     parser.add_argument('--random_seed', type=int, default=42)
     parser.add_argument('--epochs', type=int, default=5,
@@ -62,11 +61,14 @@ def get_argparser() -> argparse.ArgumentParser:
         help='whether to drop remainder of last batch')
     parser.add_argument('--req_grad_elmo', default=False, action='store_true',
         help='ELMo requires_grad means don\'t freeze weights during retrofit training')
+    parser.add_argument('--finetune_rf', default=False, action='store_true',
+        help=('If we are running a fine-tuning experiment, this indicates that we are fine-tuning a model that was '
+            'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
 
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
-    # TODO: additional args? dropout...
+    # TODO: additional model args? dropout...
     
     return parser
 
@@ -79,7 +81,12 @@ def create_wandb_histogram(list_of_values: list, description: str, epoch: int):
                 title=f"{description} Histogram, Epoch {epoch+1}")})
 
 
-def run_training_loop(args: argparse.Namespace):
+def run_training_loop(args: argparse.Namespace) -> str:
+    """Runs model-training experiment defined by `args`.
+
+    Returns:
+        model_folder (str): folder with saved final model & checkpoints
+    """
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
@@ -108,8 +115,8 @@ def run_training_loop(args: argparse.Namespace):
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     wandb.init(
         name=exp_name,
-        project='rf-bert',
-        entity='jscuds',
+        project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
+        entity=os.environ.get('WANDB_ENTITY', 'jscuds'),
         notes=None,
         config=vars(args)
     )
@@ -201,9 +208,8 @@ def run_training_loop(args: argparse.Namespace):
         model_folder, f'final.pth')   
     torch.save({ 'model': experiment.model.state_dict() }, final_save_path)
     logging.info('Final model saved to %s', final_save_path)
-    # Save M matrix
-    # TODO(js): save whole model?
-    torch.save(experiment.model.elmo._elmo_lstm._elmo_lstm.M,f'M_matrix_{device}_{day}.pt')
+
+    return model_folder
 
 
 if __name__ == '__main__':

@@ -196,7 +196,8 @@ class FinetuneExperiment(Experiment):
             ElmoClassifier(
                 num_output_representations = 1, 
                 requires_grad=True, 
-                dropout=0
+                dropout=0,
+                m_transform=args.finetune_rf,
             )
         )
         self.dataset = QuoraDataset(

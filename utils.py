@@ -2,6 +2,7 @@ from typing import Dict, Set, Tuple, Union
 
 import numpy as np
 import torch
+import wandb
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 

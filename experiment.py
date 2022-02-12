@@ -35,23 +35,7 @@ class Experiment(abc.ABC):
         """
         raise NotImplementedError()
     
-    def _draw_histograms(self):
-        # Create histograms from stats
-        # only plot for training data (lists only populate if model is training)
-        log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", epoch)
-        log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_list, "Positive minus Negative Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_plus_margin_list, "Positive minus Negative Pair Dist plus Margin", epoch)
-        # Reset stats
-        logger.info('Resetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
-        self.pos_dist_list = []
-        self.neg_dist_list = []
-        self.diff_dist_list = [] #pos_dist - neg_dist
-        self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
-        logger.info(f'''\nexperiment.pos_dist_list  = {experiment.pos_dist_list}\n experiment.neg_dist_list = {experiment.neg_dist_list}
-                        \nexperiment.diff_dist_list = {experiment.diff_dist_list}\nexperiment.diff_dist_plus_margin_list = {experiment.diff_dist_plus_margin_list}''')
-    
-    def compute_and_reset_metrics(self) -> Dict[str, float]:
+    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
         """Computes all metrics that have running averages stored in 
         `self.metric_averages`. Clears the running averages and returns.
 
@@ -74,8 +58,6 @@ class Experiment(abc.ABC):
             logger.info('\t%s = %f', name, val)
         # Clear all metrics and return the averages
         self.metric_averages.clear_all()
-        # Also draw histograms of distances
-        self._draw_histograms()
         return metrics
 
 
@@ -127,7 +109,25 @@ class RetrofitExperiment(Experiment):
             raise ValueError(f'cannot get orthogonal matrix for model {self.model_name_or_path}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
+    def _draw_histograms(self, epoch: int):
+        # Create histograms from stats
+        # only plot for training data (lists only populate if model is training)
+        log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", epoch)
+        log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", epoch)
+        log_wandb_histogram(self.diff_dist_list, "Positive minus Negative Pair Distance", epoch)
+        log_wandb_histogram(self.diff_dist_plus_margin_list, "Positive minus Negative Pair Dist plus Margin", epoch)
+        # Reset stats
+        logger.info('Resetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
+        self.pos_dist_list = []
+        self.neg_dist_list = []
+        self.diff_dist_list = [] #pos_dist - neg_dist
+        self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
 
+    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
+        # Override this method to also draw histograms of distances.
+        self._draw_histograms(epoch)
+        # Then return the normal result.
+        return super().compute_and_reset_metrics(epoch)
 
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,

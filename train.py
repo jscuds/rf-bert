@@ -170,26 +170,22 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
             if step % log_interval == 0:
                 logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
-                experiment.model.eval()
-                if args.experiment == 'finetune':
-                    # Compute eval metrics every `log_interval` batches
-                    experiment.model.eval() # set model in eval mode for evaluation
-                    with torch.no_grad():
-                        for batch, targets in tqdm.tqdm(test_dataloader, leave=False):
+                experiment.model.eval() # set model in eval mode for evaluation
+                # Compute eval metrics every `log_interval` batches
+                with torch.no_grad():
+                    for batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
+                        if args.experiment == 'finetune':
+                            batch, targets = batch
                             batch, targets = batch.to(device), targets.to(device)
                             preds = experiment.model(batch)
                             experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Test')
-                else:
-                    with torch.no_grad():
-                        for batch in tqdm.tqdm(enumerate(test_dataloader), leave=False):
+                        else:
                             sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                             sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
-
                             word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2) 
-
                             experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
                 # Compute metrics, log, and reset
-                metrics_dict = experiment.compute_and_reset_metrics()
+                metrics_dict = experiment.compute_and_reset_metrics(epoch)
                 wandb.log(metrics_dict)
                 # Set model back in train mode to resume training
                 experiment.model.train() 

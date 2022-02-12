@@ -16,8 +16,8 @@ from mosestokenizer import MosesTokenizer
 # from mosestokenizer import MosesTokenizer
 
 class QuoraDataset(Dataset):
-    def __init__(self, para_dataset: str = 'quora', num_examples: int = 25000, max_length: int = 40, 
-                 train_test_split: float = 0.8, seed: int = None):
+    def __init__(self, para_dataset: str = 'quora', num_examples: int = 25000, 
+                 max_length: int = 40, seed: int = None):
         
         self.para_dataset = para_dataset
         self.num_examples = num_examples
@@ -33,45 +33,19 @@ class QuoraDataset(Dataset):
 
         #elmo_change
         # https://github.com/luismsgomes/mosestokenizer
-        self.tokenizer = MosesTokenizer('en') 
+        self.tokenizer = MosesTokenizer('en', no_escape=True)
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
 
         # load quora, mrpc, etc.
         print(f'Loading {para_dataset} dataset...\n')
         self._load_dataset()
-        self._train_test_split(train_test_split)
-        self.split('train')
-
-    def split(self, train_or_test: str = 'train'):
-        self._split = train_or_test
-        print(f'{self.para_dataset} split set to {self._split}')
 
     def __len__(self) -> int:
-        if self._split == 'train':
-            return len(self.train_labels) 
-
-        if self._split == 'test':
-            return len(self.test_labels)
-        # return len(self.labels) #changed from ParaDataset
+        return len(self.labels)
 
     # based on Shi's gen_batch
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self._split == 'train':
-            # self.train_sents has shape B x 2 x self.max_length x word_length==50
-            return self.train_sents[idx,:,:,:], torch.tensor(self.train_labels[idx])
-
-            # return torch.tensor(self.train_sents[idx].squeeze()), torch.tensor(self.train_labels[idx]) 
-            # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
-
-        if self._split == 'test':
-            # self.test_sents has shape B x 2 x self.max_length x word_length==50
-
-            return self.test_sents[idx,:,:,:], torch.tensor(self.test_labels[idx]) 
-
-            # return torch.tensor(self.test_sents[idx].squeeze()), torch.tensor(self.test_labels[idx]) 
-            # #elmo_change ^^ had to squeeze() to pass shape [T,50] instead of [1,T,50] for batching
-
-        # return torch.tensor(self.tokenized_sentences[idx].ids), torch.tensor(self.labels[idx])
+        return self.tokenized_sentences[idx,:,:,:], torch.tensor(self.labels[idx])
     
     # TODO add MRPC, PAN...
     def _load_dataset(self):
@@ -87,8 +61,7 @@ class QuoraDataset(Dataset):
             count = 0
 
             bad_count = 0              #js added for testing
-            sentence_id_pair_list = [] #js added for testing
-            label_list = []            #js added for testing
+            label_list = []
 
             for pair in quora_shuffled['train']:
                 # count += 1 #NOTE:  incrementing here means you don't actually get 20k examples. It's what Shi did.
@@ -114,27 +87,20 @@ class QuoraDataset(Dataset):
 
                 #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
                 self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
-                label_list.append(label)                    #js added
+                label_list.append(label)
                 #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
 
                 #elmo_change thru `count += 1` 
                 # tokenize the sentences and turn into tensor of ELMo character_ids
-                # concat_sents = ' '.join([s1,s2])
-                # print(concat_sents)
-                # interim_tokenized = batch_to_ids([self.tokenizer.tokenize(concat_sents, escape=False)]) # shape: (1,seq length, 50)
                 # TODO: initialize tokenizer in a smarter way
                 s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq length, 50)
                 s2_interim_tokenized = batch_to_ids([self.tokenizer(s2)]) # shape: (1,seq length, 50) 
 
                 # add padding to self.max_length && truncate if number of tokens > self.max_length
-                # # full_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64) # shape: (one example, self.max_length, 50 for ELMo character encoding)
-                s1_full_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64)
+                s1_full_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64) # shape: (one example, self.max_length, 50 for ELMo character encoding)
                 s2_full_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64)
 
                 # Truncate to self.max_length
-                # # full_tokenized[:,:interim_tokenized.shape[1],:] = torch.clone(interim_tokenized[:,self.max_length,:]) #previously a BUG for 2x WandB ELMo runs; THERE IS NO `:` before self.max_length...so it just copied the self.max_length cell across the whole tensor
-                # s1_full_tokenized[:,:s1_interim_tokenized.shape[1],:] = torch.clone(s1_interim_tokenized[:,:self.max_length,:])
-                # s2_full_tokenized[:,:s2_interim_tokenized.shape[1],:] = torch.clone(s2_interim_tokenized[:,:self.max_length,:])
                 s1_full_tokenized[:,:s1_interim_tokenized.shape[1],:] = torch.clone(s1_interim_tokenized[:,:self.max_length,:])
                 s2_full_tokenized[:,:s2_interim_tokenized.shape[1],:] = torch.clone(s2_interim_tokenized[:,:self.max_length,:])               
                 
@@ -166,27 +132,10 @@ class QuoraDataset(Dataset):
             # map boolean list of labels to list of 0,1 ints
             self.labels = list(map(int, label_list))
 
-    def _train_test_split(self, train_test_split: float=0.8):
-        """
-        If called, creates train/test splits of sents/labels.
-        """
-        # q = torch.stack((torch.cat(s1_tokenized),torch.cat(s2_tokenized)),dim=1)
-        # SHAPE: num_examples x (s1,s2) x max_length x char length (50)
-        # SHAPE: num_examples x 2       x 40         x 50
-        self.tokenized_sentences = torch.stack((torch.cat(self.s1_tokenized), 
-                                                torch.cat(self.s2_tokenized)), 
-                                                dim=1)
-        try:
+
+            # SHAPE: num_examples x (s1,s2) x max_length x char length (50)
+            # SHAPE: num_examples x 2       x 40         x 50
+            self.tokenized_sentences = torch.stack((torch.cat(self.s1_tokenized), 
+                                                    torch.cat(self.s2_tokenized)), 
+                                                    dim=1)
             assert self.tokenized_sentences.shape == (self.num_examples,2,40,50)
-        except AssertionError:
-            print(f'self.tokenized_sentences.shape: {self.tokenized_sentences.shape}\nintended shape: {(self.num_examples,2,40,50)}')
-
-
-        self.train_sents, self.test_sents, self.train_labels, self.test_labels = (
-            sklearn.model_selection.train_test_split(
-                self.tokenized_sentences, self.labels, train_size=train_test_split, test_size=1-train_test_split, 
-                random_state=self.seed, shuffle = True, stratify = None
-            )
-        )
-        print(f'Training Size: {len(self.train_sents)}')
-        print(f'Testing Size: {len(self.test_sents)}')

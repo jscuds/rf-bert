@@ -24,7 +24,10 @@ def set_random_seed(r):
 
 
 def get_argparser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Train a model.')
+    parser = argparse.ArgumentParser(
+        description='Train a model.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
 
     parser.add_argument('experiment', type=str, choices=('retrofit', 'finetune'))
 
@@ -151,7 +154,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
         # linear layer.
         # TODO: make this nicer, this is a little hacky.
         if len(missing_keys):
-            assert missing_keys == ['linear1.weight', 'linear1.bias', 'linear2.weight', 'linear2.bias']
+            assert missing_keys == ['linear1.weight', 'linear1.bias', 'linear2.weight', 'linear2.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
         # And there should definitely never be any weights we're loading that don't have
         # anywhere to go.
         assert len(unexpected_keys) == 0

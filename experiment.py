@@ -70,7 +70,7 @@ class RetrofitExperiment(Experiment):
 
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoRetrofit(
@@ -103,10 +103,10 @@ class RetrofitExperiment(Experiment):
     @property
     def M(self) -> torch.nn.Parameter:
         """The orthogonal matrix, M, used for retrofitting."""
-        if self.args.model_name_or_path == 'elmo':
+        if self.args.model_name == 'elmo':
             return self.model.elmo._elmo_lstm._elmo_lstm.M
         else:
-            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name_or_path}')
+            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
     def _draw_histograms(self, epoch: int):
@@ -208,7 +208,7 @@ class FinetuneExperiment(Experiment):
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoClassifier(

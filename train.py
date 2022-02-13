@@ -44,8 +44,10 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--train_test_split', type=float, default=0.8,
         help='percent of data to use for train, in (0, 1]')
 
-    parser.add_argument('--model_name_or_path', default='elmo', 
+    parser.add_argument('--model_name', default='elmo', 
         choices=['elmo'], help='name of model to use')
+    parser.add_argument('--model_weights', type=str, default=None,
+        help='path to model weights to load, like `models/something.pth`')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--rf_lambda', type=float, default=1,
@@ -87,6 +89,11 @@ def run_training_loop(args: argparse.Namespace) -> str:
     }[args.experiment]
     experiment = experiment_cls(args)
 
+    # Distribute training across multiple GPUs
+    if torch.cuda.device_count() > 1:
+        print(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
+        model = _CustomDataParallel(model)
+
     #########################################################
     ################## DATASET & DATALOADER #################
     #########################################################
@@ -104,7 +111,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     ###################### TRAINING LOOP ####################
     #########################################################
     day = time.strftime(f'%Y-%m-%d-%H%M')
-    exp_name = f'{args.experiment}_{args.model_name_or_path}_{day}'
+    exp_name = f'{args.experiment}_{args.model_name}_{day}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     wandb.init(
         name=exp_name,
@@ -130,6 +137,24 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # train on gpu if availble, set `device` as global variable
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment.model.to(device)
+    # load model from disk
+    if args.model_weights:
+        logging.info('*** loading model %s from path %s', args.model_name, args.model_weights)
+        model_weights = torch.load(args.model_weights, map_location=device)
+        logging.info('*** loaded model weights from disk, keys = %s', model_weights.keys())
+        missing_keys, unexpected_keys = experiment.model.load_state_dict(model_weights['model'], strict=False)
+        logging.info('*** loaded model weights into model, missing_keys = %s', missing_keys)
+        logging.info('*** loaded model weights into model, unexpected_keys = %s', unexpected_keys)
+
+        # Allow missing keys if it's for the two linear layers from our classifier.
+        # This is for fine-tuning models that were pre-trained (retrofitted) without a
+        # linear layer.
+        # TODO: make this nicer, this is a little hacky.
+        if len(missing_keys):
+            assert missing_keys == ['linear1.weight', 'linear1.bias', 'linear2.weight', 'linear2.bias']
+        # And there should definitely never be any weights we're loading that don't have
+        # anywhere to go.
+        assert len(unexpected_keys) == 0
 
     if args.optimizer == 'adam':
         optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)

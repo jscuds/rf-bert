@@ -151,6 +151,12 @@ class TestQuoraElmo:
         # TODO: check other train_dl and test_dl return tensors
 
 class TestClassificationDatasets:
-    def test_rotten_tomatoes(self):
+    def test_rotten_tomatoes_elmo(self):
+        batch_size = 19
+        max_length = 173
         tokenizer = MosesTokenizer('en', no_escape=True) # TODO: support arbitrary tokenizer (for any model)
-        load_rotten_tomatoes(tokenizer)
+        train_dataloader, test_dataloader = load_rotten_tomatoes(batch_size=batch_size, max_length=max_length)
+        item = next(iter(train_dataloader))
+        batch, labels = item
+        assert batch.shape == (batch_size, max_length, 50)
+        assert labels[0].item() in {0, 1}

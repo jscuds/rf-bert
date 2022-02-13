@@ -7,8 +7,6 @@ import logging
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from mosestokenizer import MosesTokenizer
-
 from dataloaders import ParaphraseDatasetElmo, QuoraDataset
 from metrics import f1, accuracy, precision, recall
 from models import ElmoClassifier, ElmoRetrofit
@@ -76,7 +74,7 @@ class RetrofitExperiment(Experiment):
 
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoRetrofit(
@@ -224,13 +222,14 @@ class FinetuneExperiment(Experiment):
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"} # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 
                 requires_grad=True, 
                 dropout=0,
+                sentence_pair=(args.model_name == "elmo_sentence_pair"),
                 m_transform=args.finetune_rf,
             )
         )
@@ -243,8 +242,7 @@ class FinetuneExperiment(Experiment):
             'Acc': accuracy,
         }
     
-    def get_dataloaders(self) ->  Tuple[DataLoader, DataLoader]:
-        tokenizer = MosesTokenizer('en', no_escape=True) # TODO: support arbitrary tokenizer (for any model)
+    def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         if self.args.dataset_name == 'quora':
             dataset = QuoraDataset(
                 para_dataset='quora', num_examples=self.args.num_examples,
@@ -259,16 +257,9 @@ class FinetuneExperiment(Experiment):
                 train_split=self.args.train_test_split
             )
         elif self.args.dataset_name == 'rotten_tomatoes':
-            train_dataset, test_dataset = load_rotten_tomatoes(tokenizer)
-            train_dataloader = DataLoader(train_dataset,
-                batch_size=self.args.batch_size,
-                drop_last=self.args.drop_last,
-                pin_memory=True
-            )
-            test_dataloader = DataLoader(test_dataset,
-                batch_size=self.args.batch_size,
-                drop_last=self.args.drop_last,
-                pin_memory=True
+            train_dataloader, test_dataloader = load_rotten_tomatoes(
+                max_length=self.args.max_length, batch_size=self.args.batch_size,
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.dataset_name}')

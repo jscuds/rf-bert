@@ -11,9 +11,17 @@ class TestTrainEnd2End:
     """End-to-end testing for training loop in train.py."""
     def test_finetune_quora_tiny(self):
         os.environ['WANDB_MODE'] = 'disabled' # disable W&B for testing
+        args = get_argparser().parse_args(
+            ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8']
+        )
+        model_folder = run_training_loop(args)
+        shutil.rmtree(model_folder) # delete model saves after test
+
+    def test_finetune_rottentomatoes_tiny(self):
+        os.environ['WANDB_MODE'] = 'disabled' # disable W&B for testing
 
         args = get_argparser().parse_args(
-            ['finetune', '--epochs', '2', '--num_examples', '8']
+            ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--dataset_name', 'rotten_tomatoes']
         )
         model_folder = run_training_loop(args)
         shutil.rmtree(model_folder) # delete model saves after test
@@ -44,14 +52,14 @@ class TestTrainEnd2End:
         # --finetune_rf flag, when we try to load weights of a model
         # with an M matrix into a model that doesn't have an M matrix
         args2 = get_argparser().parse_args(
-            ['finetune', '--epochs', '2', '--num_examples', '8', '--model_weights', rf_model_path]
+            ['finetune', '--model_name', 'elmo_single_sentence', '--dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--model_weights', rf_model_path]
         )
         with pytest.raises(AssertionError):
             run_training_loop(args2)
 
         # Now actually fine-tune that model for a tiny bit
         args3 = get_argparser().parse_args(
-            ['finetune', '--epochs', '2', '--num_examples', '8', '--model_weights', rf_model_path, '--finetune_rf']
+            ['finetune', '--model_name', 'elmo_single_sentence', '--dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--model_weights', rf_model_path, '--finetune_rf']
         )
         ft_model_folder = run_training_loop(args3)
         # Delete new and old models

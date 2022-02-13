@@ -12,7 +12,6 @@ import wandb
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
-from utils import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +100,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     ################## DATASET & DATALOADER #################
     #########################################################
 
-    train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
-                                                          shuffle=True, drop_last=args.drop_last, 
-                                                          train_split=args.train_test_split, seed=args.random_seed)
+    train_dataloader, test_dataloader = experiment.get_dataloaders()
 
     logger.info('\n***CHECK DATALOADER LENGTHS:***')
     logger.info(f'len(train_dataloader) = {len(train_dataloader)}')

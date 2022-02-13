@@ -8,12 +8,9 @@ from allennlp.modules.elmo import batch_to_ids
 
 from torch.utils.data import Dataset
 
+# https://github.com/luismsgomes/mosestokenizer
 from mosestokenizer import MosesTokenizer
 
-# import allennlp
-
-# # https://github.com/luismsgomes/mosestokenizer
-# from mosestokenizer import MosesTokenizer
 
 class QuoraDataset(Dataset):
     def __init__(self, para_dataset: str = 'quora', num_examples: int = 25000, 

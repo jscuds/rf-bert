@@ -46,8 +46,10 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--train_test_split', type=float, default=0.8,
         help='percent of data to use for train, in (0, 1]')
 
-    parser.add_argument('--model_name', default='elmo', 
+    parser.add_argument('--model_name', type=str, default='elmo', 
         choices=['elmo'], help='name of model to use')
+    parser.add_argument('--dataset_name', type=str, default='quora', 
+        choices=['quora', 'rotten_tomatoes'], help='name of dataset to use for finetuning')
     parser.add_argument('--model_weights', type=str, default=None,
         help='path to model weights to load, like `models/something.pth`')
     parser.add_argument('--batch_size', type=int, default=256)

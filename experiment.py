@@ -5,8 +5,9 @@ import functools
 import logging
 
 import torch
+from torch.utils.data import DataLoader, Dataset
 
-from torch.utils.data import Dataloader, Dataset
+from mosestokenizer import MosesTokenizer
 
 from dataloaders import ParaphraseDatasetElmo, QuoraDataset
 from metrics import f1, accuracy, precision, recall
@@ -62,7 +63,7 @@ class Experiment(abc.ABC):
         return metrics
     
     @abc.abstractmethod
-    def get_dataloaders() -> Tuple[Dataloader, Dataloader]:
+    def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
         """Returns train and test dataloaders."""
         raise NotImplementedError()
 
@@ -97,7 +98,7 @@ class RetrofitExperiment(Experiment):
         self.diff_dist_list = [] #pos_dist - neg_dist
         self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
     
-    def get_dataloaders(self) -> Tuple[Dataloader, Dataloader]:
+    def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
         dataset = ParaphraseDatasetElmo(
             'quora',
@@ -111,7 +112,7 @@ class RetrofitExperiment(Experiment):
         train_dataloader, test_dataloader = train_test_split(
             dataset, batch_size=self.args.batch_size, 
             shuffle=True, drop_last=self.args.drop_last, 
-            train_split=self.args.train_test_split, seed=self.args.random_seed
+            train_split=self.args.train_test_split
         )
         return train_dataloader, test_dataloader
 
@@ -242,20 +243,20 @@ class FinetuneExperiment(Experiment):
             'Acc': accuracy,
         }
     
-    def get_dataloaders(self) ->  Tuple[Dataloader, Dataloader]:
+    def get_dataloaders(self) ->  Tuple[DataLoader, DataLoader]:
         tokenizer = MosesTokenizer('en', no_escape=True) # TODO: support arbitrary tokenizer (for any model)
         if self.args.dataset_name == 'quora':
             dataset = QuoraDataset(
-                para_dataset='quora', num_examples = args.num_examples,
-                max_length=args.max_length
+                para_dataset='quora', num_examples=self.args.num_examples,
+                max_length=self.args.max_length
             )
             # Quora doesn't have a test split, so we have to do this?
             # @js - is this right? Otherwise we should be using the actual
             # test data from quora
             train_dataloader, test_dataloader = train_test_split(
-                experiment.dataset, batch_size=args.batch_size, 
-                shuffle=True, drop_last=args.drop_last, 
-                train_split=args.train_test_split
+                dataset, batch_size=self.args.batch_size, 
+                shuffle=True, drop_last=self.args.drop_last, 
+                train_split=self.args.train_test_split
             )
         elif self.args.dataset_name == 'rotten_tomatoes':
             train_dataset, test_dataset = load_rotten_tomatoes(tokenizer)

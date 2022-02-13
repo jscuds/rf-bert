@@ -51,7 +51,7 @@ def prepare_dataset_with_elmo_tokenizer(dataset, max_length: int):
 
     # Caching sometimes causes weird issues with .map(), if you see that then
     # add the load_from_cache_file=False argument below.
-    dataset = dataset.map(text_to_ids, batched=False)
+    dataset = dataset.map(text_to_ids, batched=False, load_from_cache_file=False)
 
     dataset.set_format(type='torch', columns=['text_ids', 'label'])
     return dataset
@@ -84,10 +84,15 @@ def load_rotten_tomatoes(batch_size: int, max_length: int, drop_last: bool = Tru
     train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
 
     if num_examples:
-        train_dataset = train_dataset[:num_examples]
-        test_dataset = test_dataset[:num_examples]
+        # For some reason, truncating datasets like this returns a plain dict,
+        # so need to call Dataset.from_dict to restore as a Dataset type.
+        train_dataset = datasets.Dataset.from_dict(train_dataset[:num_examples])
+        test_dataset = datasets.Dataset.from_dict(test_dataset[:num_examples])
     print('Loading rotten tomatoes dataset with', num_examples, 'examples')
 
+    train_dataset.set_format(type='torch', columns=['text_ids', 'label'])
+    test_dataset.set_format(type='torch', columns=['text_ids', 'label'])
+    
     # TODO: argparse for shuffle
     train_dataloader = dataloader_from_dataset(
         train_dataset, batch_size=batch_size, shuffle=True, drop_last=drop_last)

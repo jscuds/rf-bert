@@ -101,7 +101,7 @@ class ElmoClassifier(torch.nn.Module):
         B = sents.shape[0] # batch_size because drop_last = False
         
         # Either we're doing single-sentence or sentence-pair classification.
-        assert sents.shape == (B,2,40,50) or sents.shape == (B,40,50)
+        assert sents.shape == (B,2,40,50) or sents.shape == (B,40,50), f"invalid input shape {sents.shape}"
 
         if sents.shape == (B, 40, 50):
             # Single-sentence classification

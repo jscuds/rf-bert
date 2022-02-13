@@ -86,6 +86,10 @@ def run_training_loop(args: argparse.Namespace) -> str:
     Returns:
         model_folder (str): folder with saved final model & checkpoints
     """
+    if args.batch_size > args.num_examples:
+        logger.warn("Batch size (%d) cannot be greater than num examples (%d), decreasing batch size", args.batch_size, args.num_examples)
+        args.batch_size = args.num_examples
+    
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,

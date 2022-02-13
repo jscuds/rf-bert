@@ -117,10 +117,10 @@ class RetrofitExperiment(Experiment):
     @property
     def M(self) -> torch.nn.Parameter:
         """The orthogonal matrix, M, used for retrofitting."""
-        if self.args.model_name == 'elmo':
+        if self.args.model_name == 'elmo_single_sentence':
             return self.model.elmo._elmo_lstm._elmo_lstm.M
         else:
-            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name}')
+            raise ValueError(f'cannot get orthogonal matrix for model {self.args.model_name}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
     def _draw_histograms(self, epoch: int):

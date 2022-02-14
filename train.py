@@ -187,7 +187,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 if len(batch) == 2: # single-sentence classification
                     sentence, targets = batch
                     sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
-                    preds = experiment.model(batch)
+                    preds = experiment.model(sentence)
                 elif len(batch) == 3: # sentence-pair classification
                     sentence1, sentence2, targets = batch
                     # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
@@ -217,7 +217,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                             if len(batch) == 2: # single-sentence classification
                                 sentence, targets = batch
                                 sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
-                                preds = experiment.model(batch)
+                                preds = experiment.model(sentence)
                             elif len(batch) == 3: # sentence-pair classification
                                 sentence1, sentence2, targets = batch
                                 # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.

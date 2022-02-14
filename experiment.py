@@ -245,12 +245,14 @@ class FinetuneExperiment(Experiment):
         if self.args.dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
-                num_examples=self.args.num_examples, drop_last=self.args.drop_last
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last,
+                random_seed=args.random_seed
             )
         elif self.args.dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
-                num_examples=self.args.num_examples, drop_last=self.args.drop_last
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last,
+                random_seed=args.random_seed
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.dataset_name}')

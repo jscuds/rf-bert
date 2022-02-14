@@ -85,9 +85,11 @@ def dataloader_from_dataset(
     )
 
 
-def load_rotten_tomatoes(batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None) -> Tuple[DataLoader, DataLoader]:
+def load_rotten_tomatoes(
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+    ) -> Tuple[DataLoader, DataLoader]:
     """Returns tuple of (train_dataloader, test_dataloader)."""
-    dataset = datasets.load_dataset('rotten_tomatoes').shuffle(seed=42)
+    dataset = datasets.load_dataset('rotten_tomatoes').shuffle(seed=random_seed)
     if num_examples:
         # For some reason, truncating datasets like this returns a plain dict,
         # so need to call Dataset.from_dict to restore as a Dataset type.
@@ -114,8 +116,10 @@ def load_rotten_tomatoes(batch_size: int, max_length: int, drop_last: bool = Tru
     return train_dataloader, test_dataloader
 
 
-def load_qqp(batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None) -> Tuple[DataLoader, DataLoader]:
-    dataset = datasets.load_dataset('glue', 'qqp').shuffle(seed=42)
+def load_qqp(
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+    ) -> Tuple[DataLoader, DataLoader]:
+    dataset = datasets.load_dataset('glue', 'qqp').shuffle(seed=random_seed)
     if num_examples:
         # For some reason, truncating datasets like this returns a plain dict,
         # so need to call Dataset.from_dict to restore as a Dataset type.

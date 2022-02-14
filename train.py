@@ -12,7 +12,6 @@ import wandb
 from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
-from utils import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +46,10 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--train_test_split', type=float, default=0.8,
         help='percent of data to use for train, in (0, 1]')
 
-    parser.add_argument('--model_name', default='elmo', 
-        choices=['elmo'], help='name of model to use')
+    parser.add_argument('--model_name', type=str, default='elmo_single_sentence', 
+        choices=['elmo_single_sentence', 'elmo_sentence_pair'], help='name of model to use')
+    parser.add_argument('--dataset_name', type=str, default='qqp', 
+        choices=['qqp', 'rotten_tomatoes'], help='name of dataset to use for finetuning')
     parser.add_argument('--model_weights', type=str, default=None,
         help='path to model weights to load, like `models/something.pth`')
     parser.add_argument('--batch_size', type=int, default=256)
@@ -85,6 +86,10 @@ def run_training_loop(args: argparse.Namespace) -> str:
     Returns:
         model_folder (str): folder with saved final model & checkpoints
     """
+    if args.batch_size > args.num_examples:
+        logger.warn("Batch size (%d) cannot be greater than num examples (%d), decreasing batch size", args.batch_size, args.num_examples)
+        args.batch_size = args.num_examples
+    
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
@@ -101,9 +106,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     ################## DATASET & DATALOADER #################
     #########################################################
 
-    train_dataloader, test_dataloader =  train_test_split(experiment.dataset, batch_size=args.batch_size, 
-                                                          shuffle=True, drop_last=args.drop_last, 
-                                                          train_split=args.train_test_split, seed=args.random_seed)
+    train_dataloader, test_dataloader = experiment.get_dataloaders()
 
     logger.info('\n***CHECK DATALOADER LENGTHS:***')
     logger.info(f'len(train_dataloader) = {len(train_dataloader)}')
@@ -181,11 +184,19 @@ def run_training_loop(args: argparse.Namespace) -> str:
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
         for step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=False):
             if args.experiment == 'finetune':
-                batch, targets = batch
-                batch, targets = batch.to(device), targets.to(device) # TODO(js) retrofit_change
-                preds = experiment.model(batch)
-                # TODO: cast to float in dataloader and remove this call to float()
-                train_loss = experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Train')
+                if len(batch) == 2: # single-sentence classification
+                    sentence, targets = batch
+                    sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+                    preds = experiment.model(sentence)
+                elif len(batch) == 3: # sentence-pair classification
+                    sentence1, sentence2, targets = batch
+                    # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
+                    sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
+                    targets = targets.to(device)
+                    preds = experiment.model(sentence_stacked)
+                else:
+                    raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+                train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
             else:
                 sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                 sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
@@ -203,10 +214,19 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 with torch.no_grad():
                     for batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
                         if args.experiment == 'finetune':
-                            batch, targets = batch
-                            batch, targets = batch.to(device), targets.to(device)
-                            preds = experiment.model(batch)
-                            experiment.compute_loss_and_update_metrics(preds, targets.float(), 'Test')
+                            if len(batch) == 2: # single-sentence classification
+                                sentence, targets = batch
+                                sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+                                preds = experiment.model(sentence)
+                            elif len(batch) == 3: # sentence-pair classification
+                                sentence1, sentence2, targets = batch
+                                # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
+                                sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
+                                targets = targets.to(device)
+                                preds = experiment.model(sentence_stacked)
+                            else:
+                                raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+                            experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
                             sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                             sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)

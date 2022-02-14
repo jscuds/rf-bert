@@ -5,10 +5,10 @@ import functools
 import logging
 
 import torch
+from torch.utils.data import DataLoader, Dataset
 
-from torch.utils.data import Dataset
-
-from dataloaders import ParaphraseDatasetElmo, QuoraDataset
+from dataloaders import ParaphraseDatasetElmo
+from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
 from metrics import f1, accuracy, precision, recall
 from models import ElmoClassifier, ElmoRetrofit
 from utils import TensorRunningAverages, log_wandb_histogram
@@ -59,18 +59,22 @@ class Experiment(abc.ABC):
         # Clear all metrics and return the averages
         self.metric_averages.clear_all()
         return metrics
+    
+    @abc.abstractmethod
+    def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
+        """Returns train and test dataloaders."""
+        raise NotImplementedError()
 
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
     model: ElmoRetrofit
-    dataset: ParaphraseDatasetElmo # TODO: make this abstract ParaphraseDataset class w/ inheritance for ELMO/BERT
     metrics: Dict[str, Metric]
     metric_averages: TensorRunningAverages
 
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoRetrofit(
@@ -79,14 +83,6 @@ class RetrofitExperiment(Experiment):
                 dropout=0,
             )
         )
-        # TODO: pass proper args to ParaphaseDataset
-        self.dataset = ParaphraseDatasetElmo(
-            'quora',
-            model_name='elmo', num_examples=args.num_examples, 
-            max_length=args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=args.random_seed
-        )
-        
         self.rf_lambda = self.args.rf_lambda
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
@@ -99,14 +95,32 @@ class RetrofitExperiment(Experiment):
         self.neg_dist_list = []
         self.diff_dist_list = [] #pos_dist - neg_dist
         self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
+    
+    def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
+        # TODO: pass proper args to ParaphaseDataset
+        dataset = ParaphraseDatasetElmo(
+            'quora',
+            model_name='elmo', num_examples=self.args.num_examples, 
+            max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
+            r1=0.5, seed=self.args.random_seed
+        )
+        # Quora doesn't have a test split, so we have to do this?
+        # @js - is this right? Otherwise we should be using the actual
+        # test data from quora
+        train_dataloader, test_dataloader = train_test_split(
+            dataset, batch_size=self.args.batch_size, 
+            shuffle=True, drop_last=self.args.drop_last, 
+            train_split=self.args.train_test_split
+        )
+        return train_dataloader, test_dataloader
 
     @property
     def M(self) -> torch.nn.Parameter:
         """The orthogonal matrix, M, used for retrofitting."""
-        if self.args.model_name == 'elmo':
+        if self.args.model_name == 'elmo_single_sentence':
             return self.model.elmo._elmo_lstm._elmo_lstm.M
         else:
-            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name}')
+            raise ValueError(f'cannot get orthogonal matrix for model {self.args.model_name}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
     def _draw_histograms(self, epoch: int):
@@ -203,24 +217,20 @@ class FinetuneExperiment(Experiment):
     classification-based tasks like those from the GLUE benchmark.
     """
     model: ElmoClassifier
-    dataset: QuoraDataset
     metrics: Dict[str, Metric]
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"} # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 
                 requires_grad=True, 
                 dropout=0,
+                sentence_pair=(args.model_name == "elmo_sentence_pair"),
                 m_transform=args.finetune_rf,
             )
-        )
-        self.dataset = QuoraDataset(
-            para_dataset='quora', num_examples = args.num_examples,
-            max_length=args.max_length, seed=args.random_seed
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
         self.metric_averages = TensorRunningAverages()
@@ -230,6 +240,23 @@ class FinetuneExperiment(Experiment):
             'Recall': recall,
             'Acc': accuracy,
         }
+    
+    def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
+        if self.args.dataset_name == 'qqp':
+            train_dataloader, test_dataloader = load_qqp(
+                max_length=self.args.max_length, batch_size=self.args.batch_size,
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last,
+                random_seed=self.args.random_seed
+            )
+        elif self.args.dataset_name == 'rotten_tomatoes':
+            train_dataloader, test_dataloader = load_rotten_tomatoes(
+                max_length=self.args.max_length, batch_size=self.args.batch_size,
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last,
+                random_seed=self.args.random_seed
+            )
+        else:
+            raise ValueError(f'unrecognized fine-tuning dataset {self.args.dataset_name}')
+        return train_dataloader, test_dataloader
     
     def compute_loss_and_update_metrics(self, preds: torch.Tensor, targets: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Computes loss. Updates running metric computations stored in `self.metric_averages`.

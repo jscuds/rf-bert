@@ -4,7 +4,9 @@ from pathlib import Path
 import numpy as np
 import torch
 from dataloaders import ParaphraseDatasetBert, ParaphraseDatasetElmo
-from utils import train_test_split
+from mosestokenizer import MosesTokenizer
+
+from dataloaders.helpers import load_rotten_tomatoes, train_test_split
 
 # Instantiate ParaphraseDataset class variants for BERT and ELMo
 
@@ -128,15 +130,16 @@ class TestQuoraElmo:
 
     def test_train_test_split_with_paraphrase(self):
         batch_size = 4
-        random_seed = 42
         train_split = 0.8
+        np.random.seed(42)
+        torch.manual_seed(42)
+
         train_dl, test_dl = train_test_split(dataset=self.quora, batch_size=batch_size, shuffle=True,
-                                              drop_last=False, train_split=train_split, seed=random_seed)
+                                              drop_last=False, train_split=train_split)
         dataset_length = len(self.quora) #16881 from test_length() above
         assert len(train_dl) == int(np.floor(np.floor(dataset_length*train_split)/batch_size))
         assert len(test_dl) == int(np.ceil(np.ceil(dataset_length*(1-train_split))/batch_size))
 
-        torch.manual_seed(random_seed)
         train_sent1, train_sent2, train_nsent1, train_nsent2, train_token1, train_token2, train_ntoken1, train_ntoken2 = next(iter(train_dl))
         test_sent1, test_sent2, test_nsent1, test_nsent2, test_token1, test_token2, test_ntoken1, test_ntoken2 = next(iter(test_dl))
         assert train_token1[0].item() == 2
@@ -147,17 +150,13 @@ class TestQuoraElmo:
         # TODO: check other train_dl and test_dl return tensors
         # TODO: check other train_dl and test_dl return tensors
 
-
-#TODO: check number ._paraphrase_sets; len(DATA_NAME._pararphrase_sets)/2 == 6526 when count is incremented at top and seed = 42
-
-
-#TODO: NEED TO CHECK
-# _overlap()
-# _corrupt()
-# _gen_neg_tuple()
-
-# __len__()
-# __getitem__() with DataLoader
-
-
-#TODO: models.py tests
+class TestClassificationDatasets:
+    def test_rotten_tomatoes_elmo(self):
+        batch_size = 19
+        max_length = 173
+        tokenizer = MosesTokenizer('en', no_escape=True) # TODO: support arbitrary tokenizer (for any model)
+        train_dataloader, test_dataloader = load_rotten_tomatoes(batch_size=batch_size, max_length=max_length)
+        item = next(iter(train_dataloader))
+        batch, labels = item
+        assert batch.shape == (batch_size, max_length, 50)
+        assert labels[0].item() in {0, 1}

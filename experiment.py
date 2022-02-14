@@ -7,11 +7,11 @@ import logging
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from dataloaders import ParaphraseDatasetElmo, QuoraDataset
+from dataloaders import ParaphraseDatasetElmo
+from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
 from metrics import f1, accuracy, precision, recall
 from models import ElmoClassifier, ElmoRetrofit
 from utils import TensorRunningAverages, log_wandb_histogram
-from dataloaders.helpers import load_rotten_tomatoes, train_test_split
 
 
 logger = logging.getLogger(__name__)
@@ -217,7 +217,6 @@ class FinetuneExperiment(Experiment):
     classification-based tasks like those from the GLUE benchmark.
     """
     model: ElmoClassifier
-    dataset: QuoraDataset
     metrics: Dict[str, Metric]
     metric_averages: TensorRunningAverages
 
@@ -243,18 +242,10 @@ class FinetuneExperiment(Experiment):
         }
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        if self.args.dataset_name == 'quora':
-            dataset = QuoraDataset(
-                para_dataset='quora', num_examples=self.args.num_examples,
-                max_length=self.args.max_length
-            )
-            # Quora doesn't have a test split, so we have to do this?
-            # @js - is this right? Otherwise we should be using the actual
-            # test data from quora
-            train_dataloader, test_dataloader = train_test_split(
-                dataset, batch_size=self.args.batch_size, 
-                shuffle=True, drop_last=self.args.drop_last, 
-                train_split=self.args.train_test_split
+        if self.args.dataset_name == 'qqp':
+            train_dataloader, test_dataloader = load_qqp(
+                max_length=self.args.max_length, batch_size=self.args.batch_size,
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last
             )
         elif self.args.dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(

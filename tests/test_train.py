@@ -9,13 +9,23 @@ from train import get_argparser, run_training_loop
 
 class TestTrainEnd2End:
     """End-to-end testing for training loop in train.py."""
-    def test_finetune_quora_tiny(self):
+    def test_finetune_qqp_tiny(self):
         os.environ['WANDB_MODE'] = 'disabled' # disable W&B for testing
+        with pytest.raises(AssertionError):
+            # This will fail because we specify the `elmo_single_sentence` model but
+            # the QQP data is pairs of sentences.
+            args = get_argparser().parse_args(
+                ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--dataset_name', 'qqp']
+            )
+            model_folder = run_training_loop(args)
+            shutil.rmtree(model_folder) # delete model saves after test
+        # Now try again, but use the sentence-pair model.
         args = get_argparser().parse_args(
-            ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4']
+            ['finetune', '--model_name', 'elmo_sentence_pair', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--dataset_name', 'qqp']
         )
         model_folder = run_training_loop(args)
         shutil.rmtree(model_folder) # delete model saves after test
+        
 
     def test_finetune_rottentomatoes_tiny(self):
         os.environ['WANDB_MODE'] = 'disabled' # disable W&B for testing

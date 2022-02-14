@@ -2,6 +2,7 @@ from typing import Dict, Set, Tuple, Union
 
 import numpy as np
 import torch
+import wandb
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
@@ -64,3 +65,11 @@ def train_test_split(dataset: Dataset, batch_size: int, shuffle: bool = True,
     test_loader = DataLoader(dataset, batch_size = batch_size, sampler = test_sampler, drop_last = drop_last, pin_memory=True)
 
     return train_loader, test_loader
+
+def log_wandb_histogram(list_of_values: list, description: str, epoch: int):
+    """Logs a histogram of `list_of_values` to W&B."""
+    lower_description = '_'.join(description.lower().split())
+    data = [[val] for val in list_of_values]
+    table = wandb.Table(data=data, columns=[lower_description])
+    wandb.log({f'{lower_description}_epoch_{epoch+1}': wandb.plot.histogram(table,lower_description,
+                title=f"{description} Histogram, Epoch {epoch+1}")})

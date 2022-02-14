@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from dataloaders import ParaphraseDatasetElmo, QuoraDataset
 from metrics import f1, accuracy, precision, recall
 from models import ElmoClassifier, ElmoRetrofit
-from utils import TensorRunningAverages
+from utils import TensorRunningAverages, log_wandb_histogram
 
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class Experiment(abc.ABC):
         """
         raise NotImplementedError()
     
-    def compute_and_reset_metrics(self) -> Dict[str, float]:
+    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
         """Computes all metrics that have running averages stored in 
         `self.metric_averages`. Clears the running averages and returns.
 
@@ -70,7 +70,7 @@ class RetrofitExperiment(Experiment):
 
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoRetrofit(
@@ -103,13 +103,31 @@ class RetrofitExperiment(Experiment):
     @property
     def M(self) -> torch.nn.Parameter:
         """The orthogonal matrix, M, used for retrofitting."""
-        if self.args.model_name_or_path == 'elmo':
+        if self.args.model_name == 'elmo':
             return self.model.elmo._elmo_lstm._elmo_lstm.M
         else:
-            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name_or_path}')
+            raise ValueError(f'cannot get orthogonal matrix for model {self.model_name}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
+    def _draw_histograms(self, epoch: int):
+        # Create histograms from stats
+        # only plot for training data (lists only populate if model is training)
+        log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", epoch)
+        log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", epoch)
+        log_wandb_histogram(self.diff_dist_list, "Positive minus Negative Pair Distance", epoch)
+        log_wandb_histogram(self.diff_dist_plus_margin_list, "Positive minus Negative Pair Dist plus Margin", epoch)
+        # Reset stats
+        logger.info('Resetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
+        self.pos_dist_list = []
+        self.neg_dist_list = []
+        self.diff_dist_list = [] #pos_dist - neg_dist
+        self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
 
+    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
+        # Override this method to also draw histograms of distances.
+        self._draw_histograms(epoch)
+        # Then return the normal result.
+        return super().compute_and_reset_metrics(epoch)
 
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
@@ -134,10 +152,10 @@ class RetrofitExperiment(Experiment):
         
         # if model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
         if self.model.training:
-            self.pos_dist_list = self.pos_dist_list + positive_pair_distance.tolist()
-            self.neg_dist_list = self.neg_dist_list + negative_pair_distance.tolist() 
-            self.diff_dist_list = self.diff_dist_list + (positive_pair_distance - negative_pair_distance).tolist()
-            self.diff_dist_plus_margin_list = self.diff_dist_plus_margin_list + loss.tolist()
+            self.pos_dist_list += positive_pair_distance.tolist()
+            self.neg_dist_list += negative_pair_distance.tolist() 
+            self.diff_dist_list += (positive_pair_distance - negative_pair_distance).tolist()
+            self.diff_dist_plus_margin_list += loss.tolist()
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
@@ -190,13 +208,14 @@ class FinetuneExperiment(Experiment):
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name_or_path == "elmo" # TODO: Support choice of model via argparse.
+        assert args.model_name == "elmo" # TODO: Support choice of model via argparse.
         self.args = args
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 
                 requires_grad=True, 
-                dropout=0
+                dropout=0,
+                m_transform=args.finetune_rf,
             )
         )
         self.dataset = QuoraDataset(

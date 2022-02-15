@@ -131,7 +131,7 @@ class ElmoClassifier(torch.nn.Module):
         x = self.relu(x)
         logits = self.linear2(x).squeeze()
         assert logits.shape == (B,)
-        return logits
+        return torch.sigmoid(logits)
     
 
 class ElmoRetrofit(torch.nn.Module):

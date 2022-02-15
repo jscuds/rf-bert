@@ -62,7 +62,13 @@ class Experiment(abc.ABC):
         # Add metrics that can't be computed by simple averaging
         # (accuracy, precision, f1...)
         for metric in self.metrics:
-            all_metrics_dict = (all_metrics_dict | metric.compute())
+            # Compute metrics like test/accuracy and train/accuracy
+            # and reset count.
+            metric_dict = metric.compute()
+            # Print metrics and add to list of total metrics.
+            for name, val in metric_dict.items():
+                logger.info('\t%s = %f', name, val)
+            all_metrics_dict = all_metrics_dict | metric_dict
 
         return all_metrics_dict
     
@@ -235,7 +241,7 @@ class FinetuneExperiment(Experiment):
                 m_transform=args.finetune_rf,
             )
         )
-        self._loss_fn = torch.nn.BCEWithLogitsLoss()
+        self._loss_fn = torch.nn.BCELoss()
         self.metric_averages = TensorRunningAverages()
         self.metrics = [Accuracy(), PrecisionRecallF1()]
     
@@ -266,7 +272,7 @@ class FinetuneExperiment(Experiment):
 
         Args:
             preds (torch.Tensor): y_pred to use for loss computation
-            targets (torch.Tensor): y_true to use for loss computation
+            targets (torch.Tensor): y_true to use for loss computation.
             metric_key (str): prefix for storing metric, probably looks like 'Test' or 'Train'
 
         Returns loss as float torch.Tensor of shape ().

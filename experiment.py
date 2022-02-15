@@ -237,7 +237,7 @@ class FinetuneExperiment(Experiment):
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
         self.metric_averages = TensorRunningAverages()
-        self.metrics = [Accuracy, PrecisionRecallF1]
+        self.metrics = [Accuracy(), PrecisionRecallF1()]
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')

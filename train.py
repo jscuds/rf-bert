@@ -90,7 +90,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     Returns:
         model_folder (str): folder with saved final model & checkpoints
     """
-    if args.batch_size > args.num_examples:
+    if (args.num_examples is not None) and (args.batch_size > args.num_examples):
         logger.warn("Batch size (%d) cannot be greater than num examples (%d), decreasing batch size", args.batch_size, args.num_examples)
         args.batch_size = args.num_examples
     
@@ -182,7 +182,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
     #    which means it will log gradients every `watch_log_freq` batches
 
-    watch_log_freq = args.num_examples//args.batch_size//10
+    watch_log_freq = len(train_dataloader)//args.batch_size//10
     wandb.watch(experiment.model, log_freq=watch_log_freq)
 
     log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)

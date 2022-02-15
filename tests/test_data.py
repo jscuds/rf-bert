@@ -163,6 +163,19 @@ class TestClassificationDatasets:
         batch, labels = item
         assert batch.shape == (batch_size, max_length, 50)
         assert labels[0].item() in {0, 1}
+
+    def test_rotten_tomatoes_elmo_full(self):
+        # Loads the full RT dataset (num examples is None).
+        # Checks the length of both datasets.
+        batch_size = 1
+        max_length = 16
+        num_examples = None
+        train_dataloader, test_dataloader = load_rotten_tomatoes(
+            batch_size=batch_size, max_length=max_length,
+            num_examples=num_examples, drop_last=False 
+        )
+        assert len(train_dataloader) == 8530
+        assert len(test_dataloader) == 1066
     
     def test_qqp_elmo(self):
         batch_size = 7

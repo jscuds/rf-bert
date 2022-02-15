@@ -72,6 +72,10 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--finetune_rf', default=False, action='store_true',
         help=('If we are running a fine-tuning experiment, this indicates that we are fine-tuning a model that was '
             'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
+    parser.add_argument('--wandb_tags', nargs='+', default=None,
+        help='add list of strings to be used as tags for W&B')
+    parser.add_argument('--wandb_notes', type=str, default=None,
+        help='pass notes for W&B runs.')
 
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
@@ -123,7 +127,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
         entity=os.environ.get('WANDB_ENTITY', 'jscuds'),
-        notes=None,
+        tags=args.wandb_tags,
+        notes=args.wandb_notes,
         config=vars(args)
     )
 

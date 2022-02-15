@@ -128,8 +128,8 @@ class RetrofitExperiment(Experiment):
         # only plot for training data (lists only populate if model is training)
         log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", epoch)
         log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_list, "Positive minus Negative Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_plus_margin_list, "Positive minus Negative Pair Dist plus Margin", epoch)
+        log_wandb_histogram(self.diff_dist_list, "Pos - Neg Pair Distance", epoch)
+        log_wandb_histogram(self.diff_dist_plus_margin_list, "Pos - Neg Pair Dist + Margin", epoch)
         # Reset stats
         logger.info('Resetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
         self.pos_dist_list = []

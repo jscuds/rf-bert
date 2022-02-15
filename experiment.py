@@ -35,7 +35,7 @@ class Experiment(abc.ABC):
         """
         raise NotImplementedError()
     
-    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
+    def compute_and_reset_metrics(self, step: int, epoch: int) -> Dict[str, float]:
         """Computes all metrics that have running averages stored in 
         `self.metric_averages`. Clears the running averages and returns.
 
@@ -123,13 +123,13 @@ class RetrofitExperiment(Experiment):
             raise ValueError(f'cannot get orthogonal matrix for model {self.args.model_name}')
 
     # TODO(jxm): Make compute_loss return dicts so we can log multiple losses independently
-    def _draw_histograms(self, epoch: int):
+    def _draw_histograms(self, step: int, epoch: int):
         # Create histograms from stats
         # only plot for training data (lists only populate if model is training)
-        log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", epoch)
-        log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_list, "Pos - Neg Pair Distance", epoch)
-        log_wandb_histogram(self.diff_dist_plus_margin_list, "Pos - Neg Pair Dist + Margin", epoch)
+        log_wandb_histogram(self.pos_dist_list, "Positive Pair Distance", step, epoch)
+        log_wandb_histogram(self.neg_dist_list, "Negative Pair Distance", step, epoch)
+        log_wandb_histogram(self.diff_dist_list, "Pos - Neg Pair Distance", step, epoch)
+        log_wandb_histogram(self.diff_dist_plus_margin_list, "Pos - Neg Pair Dist + Margin", step, epoch)
         # Reset stats
         logger.info('Resetting experiment.pos_dist_list, .neg_dist_list, .diff_dist_list, .diff_dist_plus_margin_list for new histograms')
         self.pos_dist_list = []
@@ -137,11 +137,11 @@ class RetrofitExperiment(Experiment):
         self.diff_dist_list = [] #pos_dist - neg_dist
         self.diff_dist_plus_margin_list = [] #pos_dist + gamma - neg_dist
 
-    def compute_and_reset_metrics(self, epoch: int) -> Dict[str, float]:
+    def compute_and_reset_metrics(self, step: int, epoch: int) -> Dict[str, float]:
         # Override this method to also draw histograms of distances.
-        self._draw_histograms(epoch)
+        self._draw_histograms(step, epoch)
         # Then return the normal result.
-        return super().compute_and_reset_metrics(epoch)
+        return super().compute_and_reset_metrics(step, epoch)
 
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
@@ -246,8 +246,8 @@ class FinetuneExperiment(Experiment):
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
 
-        if args.num_examples:
-            logger.warn('--num_examples set so restricting dataset sizes to %d', args.num_examples)
+        if self.args.num_examples:
+            logger.warn('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
 
         if self.args.dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(

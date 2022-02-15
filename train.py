@@ -104,7 +104,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Distribute training across multiple GPUs
     if torch.cuda.device_count() > 1:
         print(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
-        model = _CustomDataParallel(model)
+        experiment.model = torch.nn.DataParallel(experiment.model)
 
     #########################################################
     ################## DATASET & DATALOADER #################
@@ -216,7 +216,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
             optimizer.step()
             optimizer.zero_grad()
 
-            if step % log_interval == 0:
+            if (step + 1) % log_interval == 0:
                 logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches

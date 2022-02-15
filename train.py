@@ -103,7 +103,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
     # Distribute training across multiple GPUs
     if torch.cuda.device_count() > 1:
-        print(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
+        logging.info(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
         experiment.model = torch.nn.DataParallel(experiment.model)
 
     #########################################################
@@ -182,16 +182,17 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
     #    which means it will log gradients every `watch_log_freq` batches
 
-    watch_log_freq = len(train_dataloader)//args.batch_size//10
+    watch_log_freq = round(len(train_dataloader) / args.batch_size / 10.0)
     wandb.watch(experiment.model, log_freq=watch_log_freq)
 
     log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
     logger.info(f'Logging metrics every {log_interval} training steps')
 
     epoch_start_time = time.time()
+    training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=False):
+        for _epoch_step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=False):
             if args.experiment == 'finetune':
                 if len(batch) == 2: # single-sentence classification
                     sentence, targets = batch
@@ -216,8 +217,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
             optimizer.step()
             optimizer.zero_grad()
 
-            if (step + 1) % log_interval == 0:
-                logger.info(f"Running evaluation at step {step} in epoch {epoch} (logs_per_epoch = {args.logs_per_epoch})")
+            if (training_step + 1) % log_interval == 0:
+                logger.info(f"Running evaluation at step {training_step} in epoch {epoch+1} (logs_per_epoch = {args.logs_per_epoch})")
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches
                 with torch.no_grad():
@@ -242,14 +243,17 @@ def run_training_loop(args: argparse.Namespace) -> str:
                             word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch) 
                             experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
                 # Compute metrics, log, and reset
-                metrics_dict = experiment.compute_and_reset_metrics(step, epoch)
-                wandb.log(metrics_dict, step=step)
+                metrics_dict = experiment.compute_and_reset_metrics(training_step, epoch)
+                wandb.log(metrics_dict, step=training_step)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
             
+            # End of epoch step, increment counter
+            training_step += 1
+            
         if (epoch+1) % args.epochs_per_model_save == 0:
             checkpoint = {
-                'step': step, 
+                'step': training_step, 
                 'model': experiment.model.state_dict()
             }
             checkpoint_path = os.path.join(

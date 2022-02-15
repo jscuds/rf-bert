@@ -6,7 +6,7 @@ import torch
 from dataloaders import ParaphraseDatasetBert, ParaphraseDatasetElmo
 from mosestokenizer import MosesTokenizer
 
-from dataloaders.helpers import load_rotten_tomatoes, train_test_split
+from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
 
 # Instantiate ParaphraseDataset class variants for BERT and ELMo
 
@@ -153,10 +153,29 @@ class TestQuoraElmo:
 class TestClassificationDatasets:
     def test_rotten_tomatoes_elmo(self):
         batch_size = 19
+        num_examples = 100
         max_length = 173
-        tokenizer = MosesTokenizer('en', no_escape=True) # TODO: support arbitrary tokenizer (for any model)
-        train_dataloader, test_dataloader = load_rotten_tomatoes(batch_size=batch_size, max_length=max_length)
+        train_dataloader, test_dataloader = load_rotten_tomatoes(
+            batch_size=batch_size, max_length=max_length,
+            num_examples=num_examples, drop_last=False 
+        )
         item = next(iter(train_dataloader))
         batch, labels = item
         assert batch.shape == (batch_size, max_length, 50)
         assert labels[0].item() in {0, 1}
+    
+    def test_qqp_elmo(self):
+        batch_size = 7
+        num_examples = 19
+        max_length = 173
+        train_dataloader, test_dataloader = load_qqp(
+            batch_size=batch_size, max_length=max_length,
+            num_examples=num_examples, drop_last=False
+        )
+        item = next(iter(train_dataloader))
+        s1, s2, labels = item
+        # Make sure sentences are the proper shape
+        assert s1.shape == (batch_size, max_length, 50)
+        assert s2.shape == (batch_size, max_length, 50)
+        # make sure all labels in batch are in {0, 1}
+        assert torch.logical_or(labels == 0, labels == 1).all()

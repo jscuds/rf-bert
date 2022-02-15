@@ -29,7 +29,7 @@ PUNC = '!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~—“”'
 
 class ParaphraseDatasetBert(Dataset):
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'bert-base-uncased', 
-                 num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
+                 num_examples: int = None, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset
@@ -103,7 +103,7 @@ class ParaphraseDatasetBert(Dataset):
             # TODO: Tokenize things beforehand!
             for pair in quora_shuffled['train']:
                 #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
-                if count >= self.num_examples:
+                if (self.num_examples is not None) and count >= self.num_examples:
                     break
                 label = pair['is_duplicate']
                 s1_id = pair['questions']['id'][0]

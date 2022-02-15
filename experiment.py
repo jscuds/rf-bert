@@ -223,6 +223,8 @@ class FinetuneExperiment(Experiment):
     def __init__(self, args: argparse.Namespace):
         assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"} # TODO: Support choice of model via argparse.
         self.args = args
+
+        # TODO: how to handle req_grad_elmo args during fine-tuning? Shouldn't ELMO never be frozen?
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 
@@ -242,6 +244,11 @@ class FinetuneExperiment(Experiment):
         }
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
+        logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
+
+        if args.num_examples:
+            logger.warn('--num_examples set so restricting dataset sizes to %d', args.num_examples)
+
         if self.args.dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,

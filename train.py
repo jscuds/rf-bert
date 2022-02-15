@@ -39,7 +39,7 @@ def get_argparser() -> argparse.ArgumentParser:
         type=int, help='number of epochs between model saves')
     parser.add_argument('--logs_per_epoch', type=int, default=5,
         help='log metrics this number of times per epoch')
-    parser.add_argument('--num_examples', type=int, default=25_000,
+    parser.add_argument('--num_examples', type=int, default=None,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
         help='max length of each sequence for truncation')

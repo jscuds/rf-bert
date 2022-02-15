@@ -5,11 +5,10 @@ import collections
 import torch
 
 
-@abc.abstractclass
-class Metric:
+class Metric(abc.ABC):
     """A generic metric calculated over multiple batches."""
     @abc.abstractmethod
-    def update(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> None:
+    def update(self, key: str, y_pred: torch.Tensor, y_true: torch.Tensor) -> None:
         """Updates values from a single batch of y_pred and y_true."""
         raise NotImplementedError()
     
@@ -43,8 +42,8 @@ class Accuracy(Metric):
     def compute(self) -> Dict[str, torch.Tensor]:
         metrics_dict = {}
         for key in self.num_correct.keys():
-            y_pred = torch.round(y_pred)
-            metrics_dict[f'{key}/accuracy'] = (y_true == y_pred).sum() / len(y_pred)
+            acc = self.num_correct[key] / float(self.total[key])
+            metrics_dict[f'{key}/accuracy'] = acc.item()
         self.num_correct.clear()
         self.total.clear()
         return metrics_dict
@@ -74,12 +73,13 @@ class PrecisionRecallF1(Metric):
     def compute(self) -> torch.Tensor:
         metrics_dict = {}
         for key in self.true_positives.keys():
-            p = self.true_positives / float(self.true_positives + self.false_positives)
-            r = self.true_positives / float(self.true_positives + self.false_negatives)
+            p = self.true_positives[key] / float(self.true_positives[key] + self.false_positives[key])
+            r = self.true_positives[key] / float(self.true_positives[key] + self.false_negatives[key])
             f1 = 2 * (p * r) / (p + r)
-            metrics_dict[f'{key}/precision'] = p
-            metrics_dict[f'{key}/recall'] = r
-            metrics_dict[f'{key}/f1'] = f1
+            # Replace NaNs with zeros.
+            metrics_dict[f'{key}/precision'] = p.nan_to_num(0.0).item()
+            metrics_dict[f'{key}/recall'] = r.nan_to_num(0.0).item()
+            metrics_dict[f'{key}/f1'] = f1.nan_to_num(0.0).item()
 
         self.true_positives.clear()
         self.false_positives.clear()

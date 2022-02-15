@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, List, Tuple
 import abc
 import argparse
 import functools
@@ -277,7 +277,7 @@ class FinetuneExperiment(Experiment):
         pred_classes = torch.sigmoid(preds.squeeze()).detach() # TODO should we round here for sure?
 
         for metric in self.metrics:
-            metric.update(metrics_key, preds, target)
+            metric.update(metrics_key, preds, targets)
 
         return loss
 

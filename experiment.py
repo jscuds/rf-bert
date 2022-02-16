@@ -280,8 +280,6 @@ class FinetuneExperiment(Experiment):
         assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
-        pred_classes = torch.sigmoid(preds.squeeze()).detach() # TODO should we round here for sure?
-
         for metric in self.metrics:
             metric.update(metrics_key, preds, targets)
 

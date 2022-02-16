@@ -179,11 +179,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
         raise ValueError(f'unsupported optimizer {args.optimizer}')
 
     # use wandb.watch() to track gradients
-    # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
-    #    which means it will log gradients every `watch_log_freq` batches
-
-    watch_log_freq = round(len(train_dataloader) / args.batch_size / 10.0)
-    wandb.watch(experiment.model, log_freq=watch_log_freq)
+    # watch_log_freq is setup to log every 10 batches:
+    wandb.watch(experiment.model, log_freq=round(len(train_dataloader) / 10.0))
 
     log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
     logger.info(f'Logging metrics every {log_interval} training steps')

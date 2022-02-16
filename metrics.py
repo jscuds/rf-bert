@@ -24,7 +24,6 @@ class Metric(abc.ABC):
         raise NotImplementedError()
 
 
-glob_n=0
 class Accuracy(Metric):
     """The number of predictions for y_true that are 100% correct."""
     num_correct: collections.defaultdict

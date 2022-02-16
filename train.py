@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from experiment import FinetuneExperiment, RetrofitExperiment
 
 logger = logging.getLogger(__name__)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def set_random_seed(r):
     random.seed(r)
@@ -105,6 +106,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
     if torch.cuda.device_count() > 1:
         logging.info(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
         experiment.model = torch.nn.DataParallel(experiment.model)
+    
+    print(experiment.model)
 
     #########################################################
     ################## DATASET & DATALOADER #################
@@ -127,6 +130,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
         "train_dataloader_len": len(train_dataloader),
         "test_dataloader_len": len(test_dataloader), 
     }
+    # TODO: save args to file in model folder
     wandb.init(
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
@@ -150,7 +154,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
     Path(model_folder).mkdir(exist_ok=True, parents=True)
 
     # train on gpu if availble, set `device` as global variable
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment.model.to(device)
     # load model from disk
     if args.model_weights:

@@ -129,7 +129,8 @@ class ElmoClassifier(torch.nn.Module):
             assert cat_vect.shape == (u.shape[0],u.shape[1]*3+1) # shape [batch, 1024*3+1]
             x = self.linear1(cat_vect)
         x = self.relu(x)
-        logits = self.linear2(x).squeeze()
+        logits = self.linear2(x)
+        logits = logits.squeeze(dim=-1) # squeeze away dimension of length 1
         assert logits.shape == (B,)
         return torch.sigmoid(logits)
     

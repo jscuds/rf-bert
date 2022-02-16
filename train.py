@@ -121,12 +121,15 @@ def run_training_loop(args: argparse.Namespace) -> str:
     ###################### TRAINING LOOP ####################
     #########################################################
     day = time.strftime(f'%Y-%m-%d-%H%M')
-    exp_name = f'{args.experiment}_{args.model_name}_{day}'
+    # NOTE(js): `args.model_name[:4]` just grabs "elmo" or "bert"; feel free to change later
+    exp_name = f'{args.experiment}_{args.model_name[:4]}_{day}' 
     # WandB init and config (based on argument dictionaries in imports/globals cell)
-    config_dict = vars(args) | {
+    config_dict = vars(args) 
+    config_dict.update({
         "train_dataloader_len": len(train_dataloader),
         "test_dataloader_len": len(test_dataloader), 
-    }
+    })
+    
     wandb.init(
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),

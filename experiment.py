@@ -68,7 +68,7 @@ class Experiment(abc.ABC):
             # Print metrics and add to list of total metrics.
             for name, val in metric_dict.items():
                 logger.info('\t%s = %f', name, val)
-            all_metrics_dict = all_metrics_dict | metric_dict
+            all_metrics_dict.update(metric_dict)
 
         return all_metrics_dict
     
@@ -231,7 +231,7 @@ class FinetuneExperiment(Experiment):
         assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"} # TODO: Support choice of model via argparse.
         self.args = args
 
-        # TODO: how to handle req_grad_elmo args during fine-tuning? Shouldn't ELMO never be frozen?
+        # ELMO should never be frozen during finetuning.
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 

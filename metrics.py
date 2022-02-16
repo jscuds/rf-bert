@@ -43,7 +43,7 @@ class Accuracy(Metric):
         metrics_dict = {}
         for key in self.num_correct.keys():
             acc = self.num_correct[key] / float(self.total[key])
-            metrics_dict[f'{key}/accuracy'] = acc.item()
+            metrics_dict[f'{key}/Accuracy'] = acc.item()
         self.num_correct.clear()
         self.total.clear()
         return metrics_dict
@@ -77,9 +77,9 @@ class PrecisionRecallF1(Metric):
             r = self.true_positives[key] / float(self.true_positives[key] + self.false_negatives[key])
             f1 = 2 * (p * r) / (p + r)
             # Replace NaNs with zeros.
-            metrics_dict[f'{key}/precision'] = p.nan_to_num(0.0).item()
-            metrics_dict[f'{key}/recall'] = r.nan_to_num(0.0).item()
-            metrics_dict[f'{key}/f1'] = f1.nan_to_num(0.0).item()
+            metrics_dict[f'{key}/Precision'] = p.nan_to_num(0.0).item()
+            metrics_dict[f'{key}/Recall'] = r.nan_to_num(0.0).item()
+            metrics_dict[f'{key}/F1'] = f1.nan_to_num(0.0).item()
 
         self.true_positives.clear()
         self.false_positives.clear()

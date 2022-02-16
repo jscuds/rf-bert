@@ -50,6 +50,6 @@ def log_wandb_histogram(list_of_values: list, description: str, step: int, epoch
     )
     wandb.log({
             lower_description: histogram, 
-            epoch: epoch
-            }, step=step
-    )
+            'epoch': epoch,
+            'step': step
+    })

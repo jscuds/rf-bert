@@ -34,6 +34,21 @@ def train_test_split(dataset: Dataset, batch_size: int, shuffle: bool = True,
 
     return train_loader, test_loader
 
+def elmo_tokenize_and_pad(
+        tokenizer: MosesTokenizer, text: str, max_length: int, hidden_size: int = 50
+    ) -> torch.Tensor:
+    """Tokenizes a single sentence and truncates/pads to length `max_length`."""
+    text = tokenizer(text)
+    # TODO: Figure out how to do this successfully in batch.
+    text_ids = batch_to_ids([text])[0]
+    # Pad to max length.
+    text_ids = text_ids[:max_length]
+    pad_size = max_length - len(text_ids)
+    if pad_size > 0:
+        padding = torch.zeros(pad_size, 50, dtype=int)
+        text_ids = torch.cat((text_ids, padding), dim=0)
+    return text_ids
+
 
 def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_length: int):
     """Tokenizes 'text' field and returns dataset with each column of `text_columns` transformed to token IDs,
@@ -42,16 +57,8 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
     elmo_tokenizer = MosesTokenizer('en', no_escape=True)
     def text_to_ids(e):
         for col in text_columns:
-            text = elmo_tokenizer(e[col])
-            # TODO: Figure out how to do this successfully in batch.
-            text_ids = batch_to_ids([text])[0]
-            # Pad to max length.
-            text_ids = text_ids[:max_length]
-            pad_size = max_length - len(text_ids)
-            if pad_size > 0:
-                padding = torch.zeros(pad_size, 50, dtype=int)
-                text_ids = torch.cat((text_ids, padding), dim=0)
-            e[col] = text_ids
+            text = e[col]
+            e[col] = elmo_tokenize_and_pad(elmo_tokenizer, text, max_length)
         return e
 
     # Caching sometimes causes weird issues with .map(), if you see that then

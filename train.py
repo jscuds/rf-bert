@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import random
 import os
@@ -14,6 +15,7 @@ from torch.utils.data import DataLoader
 from experiment import FinetuneExperiment, RetrofitExperiment
 
 logger = logging.getLogger(__name__)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def set_random_seed(r):
     random.seed(r)
@@ -105,6 +107,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
     if torch.cuda.device_count() > 1:
         logging.info(f'torch.nn.DataParallel distributing training across {torch.cuda.device_count()} GPUs')
         experiment.model = torch.nn.DataParallel(experiment.model)
+    
+    print(experiment.model)
 
     #########################################################
     ################## DATASET & DATALOADER #################
@@ -151,9 +155,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Create folder for model saves (and parent models/ folder, if needed)
     model_folder = f"models/{exp_name}/"
     Path(model_folder).mkdir(exist_ok=True, parents=True)
+    # Log args to folder
+    args_file_path = os.path.join(model_folder, 'args.json')
+    logging.info('Saving training args to %s', args_file_path)
+    with open(args_file_path, 'w') as args_file:
+        json.dump(config_dict, args_file)
 
     # train on gpu if availble, set `device` as global variable
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     experiment.model.to(device)
     # load model from disk
     if args.model_weights:
@@ -192,7 +200,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for _epoch_step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), leave=False):
+        for _epoch_step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
             if args.experiment == 'finetune':
                 if len(batch) == 2: # single-sentence classification
                     sentence, targets = batch

@@ -39,10 +39,17 @@ class TensorRunningAverages:
         for key in self._store_sum:
             self.clear(key)
 
-def log_wandb_histogram(list_of_values: list, description: str, epoch: int):
+def log_wandb_histogram(list_of_values: list, description: str, step: int, epoch: int):
     """Logs a histogram of `list_of_values` to W&B."""
     lower_description = '_'.join(description.lower().split())
     data = [[val] for val in list_of_values]
     table = wandb.Table(data=data, columns=[lower_description])
-    wandb.log({f'{lower_description}_epoch_{epoch+1}': wandb.plot.histogram(table,lower_description,
-                title=f"{description} Histogram, Epoch {epoch+1}")})
+    histogram = wandb.plot.histogram(
+        table, lower_description,
+        title=f"{description} Histogram, Epoch {epoch+1}"
+    )
+    wandb.log({
+            lower_description: histogram, 
+            epoch: epoch
+            }, step=step
+    )

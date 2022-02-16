@@ -39,7 +39,7 @@ def get_argparser() -> argparse.ArgumentParser:
         type=int, help='number of epochs between model saves')
     parser.add_argument('--logs_per_epoch', type=int, default=5,
         help='log metrics this number of times per epoch')
-    parser.add_argument('--num_examples', type=int, default=25_000,
+    parser.add_argument('--num_examples', type=int, default=None,
         help='number of training examples')
     parser.add_argument('--max_length', type=int, default=40,
         help='max length of each sequence for truncation')
@@ -90,7 +90,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     Returns:
         model_folder (str): folder with saved final model & checkpoints
     """
-    if args.batch_size > args.num_examples:
+    if (args.num_examples is not None) and (args.batch_size > args.num_examples):
         logger.warn("Batch size (%d) cannot be greater than num examples (%d), decreasing batch size", args.batch_size, args.num_examples)
         args.batch_size = args.num_examples
     
@@ -123,13 +123,17 @@ def run_training_loop(args: argparse.Namespace) -> str:
     day = time.strftime(f'%Y-%m-%d-%H%M')
     exp_name = f'{args.experiment}_{args.model_name}_{day}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
+    config_dict = vars(args) | {
+        "train_dataloader_len": len(train_dataloader),
+        "test_dataloader_len": len(test_dataloader), 
+    }
     wandb.init(
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
         entity=os.environ.get('WANDB_ENTITY', 'jscuds'),
         tags=args.wandb_tags,
         notes=args.wandb_notes,
-        config=vars(args)
+        config=config_dict,
     )
 
     # Log to a file and stdout
@@ -178,7 +182,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # watch_log_freq is setup to log every 10 batches: num_examples//batch_size//10
     #    which means it will log gradients every `watch_log_freq` batches
 
-    watch_log_freq = args.num_examples//args.batch_size//10
+    watch_log_freq = len(train_dataloader)//args.batch_size//10
     wandb.watch(experiment.model, log_freq=watch_log_freq)
 
     log_interval = max(len(train_dataloader) // args.logs_per_epoch, 1)
@@ -203,9 +207,9 @@ def run_training_loop(args: argparse.Namespace) -> str:
                     raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
                 train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
             else:
-                sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
-                sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
-                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2)
+                # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
+                batch = (t.to(device) for t in batch)
+                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch)
                 train_loss = experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
             
             train_loss.backward()
@@ -233,13 +237,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
                                 raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
                             experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
-                            sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
-                            sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = sent1.to(device), sent2.to(device), nsent1.to(device), nsent2.to(device), token1.to(device), token2.to(device), ntoken1.to(device), ntoken2.to(device)
-                            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2) 
+                            # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
+                            batch = (t.to(device) for t in batch)
+                            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch) 
                             experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
                 # Compute metrics, log, and reset
-                metrics_dict = experiment.compute_and_reset_metrics(epoch)
-                wandb.log(metrics_dict)
+                metrics_dict = experiment.compute_and_reset_metrics(step, epoch)
+                wandb.log(metrics_dict, step=step)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
             

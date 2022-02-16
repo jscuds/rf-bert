@@ -99,8 +99,6 @@ def load_rotten_tomatoes(
     dataset = prepare_dataset_with_elmo_tokenizer(dataset=dataset, text_columns=['text'], max_length=max_length)
     # TODO: support arbitrary tokenizer (for any model)
     train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
-    
-    print('Loading rotten tomatoes dataset with', num_examples, 'examples')
 
     train_dataset.set_format(type='torch', columns=['text', 'label'])
     test_dataset.set_format(type='torch', columns=['text', 'label'])

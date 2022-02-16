@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, List, Tuple
 import abc
 import argparse
 import functools
@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
-from metrics import f1, accuracy, precision, recall
+from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
 from utils import TensorRunningAverages, log_wandb_histogram
 
@@ -21,7 +21,7 @@ Metric = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 class Experiment(abc.ABC):
     model: torch.nn.Module
     dataset: Dataset
-    metrics: Dict[str, Metric]
+    metrics: List[Metric]
     metric_averages: TensorRunningAverages
 
     @abc.abstractmethod
@@ -49,16 +49,22 @@ class Experiment(abc.ABC):
                 ...
             }
         """
-        metrics: Dict[str, float] = {}
+        all_metrics_dict: Dict[str, float] = {}
         # Compute running averages of metrics and store in a dict
         for name in sorted(self.metric_averages.keys()):
             val = self.metric_averages.get(name)
-            metrics[name] = val
+            all_metrics_dict[name] = val
             # todo(jxm): use `logging` package here
             logger.info('\t%s = %f', name, val)
-        # Clear all metrics and return the averages
+        # Clear all metric averages and return the averages
         self.metric_averages.clear_all()
-        return metrics
+
+        # Add metrics that can't be computed by simple averaging
+        # (accuracy, precision, f1...)
+        for metric in self.metrics:
+            all_metrics_dict = (all_metrics_dict | metric.compute())
+
+        return all_metrics_dict
     
     @abc.abstractmethod
     def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
@@ -69,9 +75,8 @@ class Experiment(abc.ABC):
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
     model: ElmoRetrofit
-    metrics: Dict[str, Metric]
+    metrics: List[Metric]
     metric_averages: TensorRunningAverages
-
 
     def __init__(self, args: argparse.Namespace):
         assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
@@ -86,11 +91,9 @@ class RetrofitExperiment(Experiment):
         self.rf_lambda = self.args.rf_lambda
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
-        # TODO: implement retrofit metrics
-        #   --> I think loss is all we need for retrofitting -js
-        self.metrics = {}
+        self.metrics = []
 
-        # NOTE(js): added lists to hold every individual pos_dist and neg_dist for wandb histogram
+        # Lists to store things over batch for histograms
         self.pos_dist_list = []
         self.neg_dist_list = []
         self.diff_dist_list = [] #pos_dist - neg_dist
@@ -164,7 +167,7 @@ class RetrofitExperiment(Experiment):
         loss = positive_pair_distance + gamma - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
         
-        # if model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
+        # If model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
         if self.model.training:
             self.pos_dist_list += positive_pair_distance.tolist()
             self.neg_dist_list += negative_pair_distance.tolist() 
@@ -193,7 +196,6 @@ class RetrofitExperiment(Experiment):
         L_o: orthogonality constraint on matrix transformation M
         L = L_h + lambda * L_o
         """
-        # TODO: how to get representations for each word? --> ANS(js): ElmoRetrofit.forward() outputs
         hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
@@ -202,7 +204,6 @@ class RetrofitExperiment(Experiment):
         orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
-        # NOTE(js): logging 3 additional metrics to troubleshoot loss
         self.metric_averages.update(f'{metrics_key}/Hinge_Loss', hinge_loss.item())
         self.metric_averages.update(f'{metrics_key}/Pre_Clamp_Hinge_Loss', pre_clamp_hinge_loss.item())
         self.metric_averages.update(f'{metrics_key}/Orthogonalization_Loss', orth_loss.item())
@@ -217,7 +218,7 @@ class FinetuneExperiment(Experiment):
     classification-based tasks like those from the GLUE benchmark.
     """
     model: ElmoClassifier
-    metrics: Dict[str, Metric]
+    metrics: List[Metric]
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
@@ -236,12 +237,7 @@ class FinetuneExperiment(Experiment):
         )
         self._loss_fn = torch.nn.BCEWithLogitsLoss()
         self.metric_averages = TensorRunningAverages()
-        self.metrics = {
-            'F1': f1,
-            'Precision': precision,
-            'Recall': recall,
-            'Acc': accuracy,
-        }
+        self.metrics = [Accuracy(), PrecisionRecallF1()]
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
@@ -268,16 +264,20 @@ class FinetuneExperiment(Experiment):
     def compute_loss_and_update_metrics(self, preds: torch.Tensor, targets: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Computes loss. Updates running metric computations stored in `self.metric_averages`.
 
-        Returns loss.
+        Args:
+            preds (torch.Tensor): y_pred to use for loss computation
+            targets (torch.Tensor): y_true to use for loss computation
+            metric_key (str): prefix for storing metric, probably looks like 'Test' or 'Train'
+
+        Returns loss as float torch.Tensor of shape ().
         """
         assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
         pred_classes = torch.sigmoid(preds.squeeze()).detach() # TODO should we round here for sure?
 
-        for metric_name, metric_func in self.metrics.items():
-            val = metric_func(pred_classes, targets)
-            self.metric_averages.update(f'{metrics_key}/{metric_name}', val)
+        for metric in self.metrics:
+            metric.update(metrics_key, preds, targets)
 
         return loss
 

@@ -108,7 +108,7 @@ def load_rotten_tomatoes(
         batch_size=batch_size, shuffle=True, drop_last=drop_last
     )
     test_dataloader = dataloader_from_dataset(
-        train_dataset, text_columns=['text'], label_columns=['label'],
+        test_dataset, text_columns=['text'], label_columns=['label'],
         batch_size=batch_size, shuffle=True, drop_last=drop_last
     )
     return train_dataloader, test_dataloader

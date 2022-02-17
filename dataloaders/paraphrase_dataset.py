@@ -8,8 +8,9 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import datasets
 import numpy as np
-#import pandas as pd
 import torch
+import tqdm
+
 from allennlp.modules.elmo import Elmo, batch_to_ids
 from mosestokenizer import MosesTokenizer
 from torch import Tensor, nn, optim
@@ -431,16 +432,15 @@ class ParaphraseDatasetElmo(Dataset):
             label_list = []            #js added for testing
 
             # TODO: Tokenize things beforehand!
-            for pair in quora_shuffled['train']:
+            for pair in tqdm.tqdm(quora_shuffled['train'], desc='Processing quora paraphrases'):
                 #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
-                if count >= self.num_examples:
+                if (self.num_examples is not None) and count >= self.num_examples:
                     break
                 label = pair['is_duplicate']
                 s1_id = pair['questions']['id'][0]
                 s2_id = pair['questions']['id'][1]
                 s1 = pair['questions']['text'][0]
                 s2 = pair['questions']['text'][1]
-                
                 # TODO: better way? .map() functionality of quora dataset object? map bad words to [UNK]?
                 exist_bad_word = False
                 for i in self.bad_words:
@@ -451,6 +451,14 @@ class ParaphraseDatasetElmo(Dataset):
                     bad_count += 1  #js added for testing
                     continue # skip pair if it contains element from self.bad_words
 
+                # Look for newlines (they will break the Moses tokenizer).
+                if '\n' in s1:
+                    logger.warn(f'Replacing newlines in s1: "{s1}"')
+                    s1 = s1.replace('\n', ' ')
+                if '\n' in s2:
+                    logger.warn(f'Replacing newlines in s2: "{s2}"')
+                    s2 = s2.replace('\n', ' ')
+
                 #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
                 self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
                 label_list.append(label)                    #js added
@@ -460,6 +468,12 @@ class ParaphraseDatasetElmo(Dataset):
                 #elmo_change using batch_to_ids and tokenizer
                 s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq_length, 50)
                 s2_interim_tokenized = batch_to_ids([self.tokenizer(s2)]) # shape: (1,seq_length, 50) 
+
+                # Skip if one of the inputs has no tokens (this is a real issue).
+                if (not s1_interim_tokenized.numel()) or (not s2_interim_tokenized.numel()):
+                    logger.warn(f'Skipping pair with empty question: {pair}')
+                    continue
+                
 
                 # add padding to self.max_length && truncate if number of tokens > self.max_length
                 s1_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64) # shape: (1, self.max_length, 50 for ELMo character encoding)
@@ -522,7 +536,6 @@ class ParaphraseDatasetElmo(Dataset):
                 #   *NOTE* `index` is the index of the word in the tokenized sentence (`s1_tokenized`)
 
                 for index, token_tuple in enumerate(s1_tuple):
-
                     if token_tuple in self.stop_words_set:
                         continue
                     sid_index = (s1_id, index)

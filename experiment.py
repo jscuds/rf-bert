@@ -229,7 +229,7 @@ class RetrofitExperiment(Experiment):
         # Compute and store norms of word representations.
         word_rep_pos = torch.cat([word_rep_pos_1, word_rep_pos_2], dim=0)
         word_rep_pos_norm = torch.norm(word_rep_pos, p=2, dim=1).mean()
-        self.metric_averages.update(f'{metrics_key}/pos_word_emb_norm', neg_pair_distance.item())
+        self.metric_averages.update(f'{metrics_key}/pos_word_emb_norm', word_rep_pos_norm.item())
         word_rep_neg = torch.cat([word_rep_neg_1, word_rep_neg_2], dim=0)
         word_rep_neg_norm = torch.norm(word_rep_neg, p=2, dim=1).mean()
         self.metric_averages.update(f'{metrics_key}/neg_word_emb_norm', word_rep_neg_norm.item())

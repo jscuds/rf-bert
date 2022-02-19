@@ -196,11 +196,20 @@ class RetrofitExperiment(Experiment):
                      word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
-        Loss is defined in Section 3.2 of the paper.
+        Loss is defined in Section 3.2 of the paper. emb_dim for ELMO is 1024.
 
         L_h: hinge loss between representations of the same word in two different contexts
         L_o: orthogonality constraint on matrix transformation M
         L = L_h + lambda * L_o
+
+        Args:
+            word_rep_pos_1 (float torch.Tensor): representation of word 1 in positive pair, shape [B, emb_dim]
+            word_rep_pos_2 (float torch.Tensor): representation of word 2 in positive pair, shape [B, emb_dim]
+            word_rep_neg_1 (float torch.Tensor): representation of word 1 in negative pair, shape [B, emb_dim]
+            word_rep_neg_2 (float torch.Tensor): representation of word 2 in negative pair, shape [B, emb_dim]
+            metric_key (str): prefix for metric-logging, like 'Train'
+        Returns:
+            loss (float torch.Tensor): loss for batch, a scalar
         """
         hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
@@ -209,12 +218,23 @@ class RetrofitExperiment(Experiment):
         )
         orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss
+        # Compute and store losses and related metrics.
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
         self.metric_averages.update(f'{metrics_key}/Hinge_Loss', hinge_loss.item())
         self.metric_averages.update(f'{metrics_key}/Pre_Clamp_Hinge_Loss', pre_clamp_hinge_loss.item())
         self.metric_averages.update(f'{metrics_key}/Orthogonalization_Loss', orth_loss.item())
+        # Compute and store average distances between word pairs.
         self.metric_averages.update(f'{metrics_key}/pos_pair_dist_mean', pos_pair_distance.item())
         self.metric_averages.update(f'{metrics_key}/neg_pair_dist_mean', neg_pair_distance.item())
+        # Compute and store norms of word representations.
+        word_rep_pos = torch.cat([word_rep_pos_1, word_rep_pos_2], dim=0)
+        word_rep_pos_norm = torch.norm(word_rep_pos, p=2, dim=1).mean()
+        self.metric_averages.update(f'{metrics_key}/pos_word_emb_norm', word_rep_pos_norm.item())
+        word_rep_neg = torch.cat([word_rep_neg_1, word_rep_neg_2], dim=0)
+        word_rep_neg_norm = torch.norm(word_rep_neg, p=2, dim=1).mean()
+        self.metric_averages.update(f'{metrics_key}/neg_word_emb_norm', word_rep_neg_norm.item())
+        avg_norm = (word_rep_pos_norm + word_rep_neg_norm) / 2.0
+        self.metric_averages.update(f'{metrics_key}/avg_word_emb_norm', avg_norm.item())
         return loss
 
 
@@ -228,7 +248,7 @@ class FinetuneExperiment(Experiment):
     metric_averages: TensorRunningAverages
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"} # TODO: Support choice of model via argparse.
+        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"}
         self.args = args
 
         # ELMO should never be frozen during finetuning.

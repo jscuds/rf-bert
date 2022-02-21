@@ -156,7 +156,7 @@ class RetrofitExperiment(Experiment):
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
             word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
             gamma: float
-        ) -> torch.Tensor:
+        ) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor,torch.Tensor]:
         """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
         
         Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
@@ -167,8 +167,8 @@ class RetrofitExperiment(Experiment):
         """
         assert word_rep_pos_1.shape == word_rep_pos_2.shape
         assert word_rep_neg_1.shape == word_rep_neg_2.shape
-        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
-        negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
+        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=-1) # NOTE(js) changed from dim=1 to dim=-1 to work with batch_size=1
+        negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=-1) # shape: (batch_size,) if keepdim=False
 
         loss = positive_pair_distance + gamma - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.

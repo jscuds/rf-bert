@@ -53,3 +53,37 @@ def log_wandb_histogram(list_of_values: list, description: str, step: int, epoch
             'epoch': epoch,
             'step': step
     })
+
+
+
+def elmo_sentence_decode(sent: torch.Tensor) -> str:
+    """
+    Decodes a sentence of ELMo character_ids with the shape [1,sequence_length,50] into a readable sentence string.
+    Useful for debugging when you only have a ParaDatasetElmo object and its various tensor/tuple/sent_id returns.
+    """
+    sent = tuple([tuple(word.tolist()) for word in sent.squeeze()])
+    full_sent = []
+    for word in sent:
+        if word == tuple([0]*50): continue
+        word_concat = []
+        for char in word:
+            # print(char)
+            if char == 259: continue
+            if char == 260: break
+            if char == 261: break
+            word_concat.append(chr(char-1))
+        full_sent.append(''.join(word_concat))
+    return ' '.join(full_sent)
+
+def elmo_word_decode(word: Tuple) -> str:
+    """
+    Decodes a word tuple of ELMo character_ids with length=50 into a readable sentence string.
+    Useful for debugging when you only have a ParaDatasetElmo object and its various tensor/tuple/sent_id returns.
+    """
+    word_concat = []
+    for char in word:
+        if char == 259: continue
+        if char == 260: break
+        word_concat.append(chr(char-1))
+
+    return ''.join(word_concat)

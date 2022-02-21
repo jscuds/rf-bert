@@ -234,7 +234,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                         if args.experiment == 'finetune':
                             if len(batch) == 2: # single-sentence classification
                                 sentence, targets = batch
-                                sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+                                sentence, targets = sentence.to(device), targets.to(device)
                                 preds = experiment.model(sentence)
                             elif len(batch) == 3: # sentence-pair classification
                                 sentence1, sentence2, targets = batch

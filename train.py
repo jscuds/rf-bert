@@ -282,12 +282,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
         if args.experiment == 'retrofit':
             experiment.wb_table.update_wandb_table(epoch+1)
 
-            # TODO(js): if you log it every epoch will it continue to append new rows, or completely reset the table?
-            # https://docs.wandb.ai/guides/data-vis/log-tables#log-a-table-to-a-run
-            wandb.log({'sampled_examples_table':experiment.wb_table.final_table}) 
-
         epoch_start_time = time.time()
+
     logging.info(f'***** Training finished after {args.epochs} epochs *****')
+
+    # After training, log example table
+    if args.experiment == 'retrofit':
+        wandb.log({'sampled_examples_table':experiment.wb_table.final_table}) 
 
     # Save final model
     final_save_path = os.path.join(

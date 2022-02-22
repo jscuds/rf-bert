@@ -60,6 +60,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='lambda - regularization constant for retrofitting loss')
     parser.add_argument('--rf_gamma', type=float, default=2,
         help='gamma - margin constant for retrofitting loss')
+    parser.add_argument('--num_table_examples', type=int, default=2,
+        help='examples to watch in both train/test sets - will log to W&B Table')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -216,6 +218,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
                     raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
                 train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
             else:
+                # Check to see if sampled examples are in the batch
+                experiment.wb_table.check_tracked_indices(*batch)
                 # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                 batch = (t.to(device) for t in batch)
                 word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch)
@@ -246,6 +250,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
                                 raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
                             experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
+                            # Check to see if sampled examples are in the batch
+                            experiment.wb_table.check_tracked_indices(*batch)
                             # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                             batch = (t.to(device) for t in batch)
                             word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch) 
@@ -273,6 +279,12 @@ def run_training_loop(args: argparse.Namespace) -> str:
         epoch_end_time = time.time()
         logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")
         wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
+        if args.experiment == 'retrofit':
+            experiment.wb_table.update_wandb_table(epoch+1)
+
+            # TODO(js): if you log it every epoch will it continue to append new rows, or completely reset the table?
+            # https://docs.wandb.ai/guides/data-vis/log-tables#log-a-table-to-a-run
+            wandb.log({'sampled_examples_table':experiment.wb_table.final_table}) 
 
         epoch_start_time = time.time()
     logging.info(f'***** Training finished after {args.epochs} epochs *****')

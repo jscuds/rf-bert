@@ -11,6 +11,7 @@ from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
+from tablelog import TableLog
 from utils import TensorRunningAverages, log_wandb_histogram
 
 
@@ -23,6 +24,7 @@ class Experiment(abc.ABC):
     dataset: Dataset
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
+    wb_table: TableLog
 
     @abc.abstractmethod
     def __init__(self, args: argparse.Namespace):
@@ -83,6 +85,7 @@ class RetrofitExperiment(Experiment):
     model: ElmoRetrofit
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
+    wb_table: TableLog
 
     def __init__(self, args: argparse.Namespace):
         assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
@@ -115,12 +118,27 @@ class RetrofitExperiment(Experiment):
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
-        # test data from quora
+        # test data from quora 
+        #
+        # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
         train_dataloader, test_dataloader = train_test_split(
             dataset, batch_size=self.args.batch_size, 
             shuffle=True, drop_last=self.args.drop_last, 
             train_split=self.args.train_test_split
         )
+        # if we're tracking examples for a table, setup the table configuration
+        self.wb_table = (
+            TableLog(
+                num_table_examples=self.args.num_table_examples,
+                train_dataloader=train_dataloader,
+                test_dataloader=test_dataloader,
+                columns=["index", "epoch", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+            )
+        )
+        # Gets examples to track in a W&B Table
+        # Updates internal dictionaries
+        self.wb_table.get_tracked_examples()
+
         return train_dataloader, test_dataloader
 
     @property
@@ -182,6 +200,17 @@ class RetrofitExperiment(Experiment):
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
+
+        # Populate tracked examples in dictionaries for W&B table.
+        # Handle exception for test_loss.py because RetrofitExperiment.get_dataloaders() isn't called.
+        try:
+            if len(self.wb_table.batch_indices) > 0:
+                for ex_idx, b_idx in self.wb_table.batch_indices.items():
+                    self.wb_table.table_hinge_loss[ex_idx] = loss[b_idx]
+                    self.wb_table.table_pos_word_dist[ex_idx] = positive_pair_distance[b_idx]
+                    self.wb_table.table_neg_word_dist[ex_idx] = negative_pair_distance[b_idx]
+        except AttributeError:
+            pass
         return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
         
         

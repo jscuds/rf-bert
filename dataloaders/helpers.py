@@ -63,8 +63,7 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
 
     # Caching sometimes causes weird issues with .map(), if you see that then
     # add the load_from_cache_file=False argument below.
-    dataset = dataset.map(text_to_ids, batched=False, load_from_cache_file=False)
-    return dataset
+    return dataset.map(text_to_ids, batched=False)
 
 
 def dataloader_from_dataset(
@@ -88,7 +87,7 @@ def dataloader_from_dataset(
         return tuple(torch.stack(d[k]) for k in text_columns) + tuple(torch.stack(d[k]).float() for k in label_columns)
     return DataLoader(dataset,
         batch_size=batch_size, collate_fn=collate_fn,
-        shuffle=True, drop_last=drop_last, pin_memory=True
+        shuffle=shuffle, drop_last=drop_last, pin_memory=True
     )
 
 
@@ -131,7 +130,11 @@ def load_qqp(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(dataset=dataset, text_columns=['question1', 'question2'], max_length=max_length)
+    dataset = prepare_dataset_with_elmo_tokenizer(
+        dataset=dataset,
+        text_columns=['question1', 'question2'],
+        max_length=max_length
+    )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
     print('Loading rotten tomatoes dataset with', num_examples, 'examples')

@@ -74,6 +74,8 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--finetune_rf', default=False, action='store_true',
         help=('If we are running a fine-tuning experiment, this indicates that we are fine-tuning a model that was '
             'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
+    parser.add_argument('--model_weights_drop_linear', default=False, action='store_true',
+        help='If we are fine-tuning a model that previously had a linear layer, don\'t load the weights for the linear layer')
     parser.add_argument('--wandb_tags', nargs='+', default=None,
         help='add list of strings to be used as tags for W&B')
     parser.add_argument('--wandb_notes', type=str, default=None,
@@ -166,9 +168,23 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # load model from disk
     if args.model_weights:
         logging.info('*** loading model %s from path %s', args.model_name, args.model_weights)
-        model_weights = torch.load(args.model_weights, map_location=device)
+        model_weights = torch.load(args.model_weights, map_location=device)['model']
         logging.info('*** loaded model weights from disk, keys = %s', model_weights.keys())
-        missing_keys, unexpected_keys = experiment.model.load_state_dict(model_weights['model'], strict=False)
+
+        if args.model_weights_drop_linear:
+            # Say we want to fine-tune a previously fine-tuned model and drop its linear layers.
+            # We can do so 
+            logging.info(f'--model_weights_drop_linear set, not loading weights for linear layers')
+            linear_keys = [k for k in model_weights.keys() if k.startswith('linear')]
+
+            if not len(linear_keys):
+                raise ValueError('--model_weights_drop_linear set but no weights for linear layers found')
+
+            for key in linear_keys:
+                logging.info(f'\t- dropping weight with key `%s`', key)
+                del model_weights[key]
+
+        missing_keys, unexpected_keys = experiment.model.load_state_dict(model_weights, strict=False)
         logging.info('*** loaded model weights into model, missing_keys = %s', missing_keys)
         logging.info('*** loaded model weights into model, unexpected_keys = %s', unexpected_keys)
 
@@ -200,25 +216,25 @@ def run_training_loop(args: argparse.Namespace) -> str:
     training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for _epoch_step, batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
+        for train_batch in tqdm.tqdm(train_dataloader, total=len(train_dataloader), desc='Training', leave=False):
             if args.experiment == 'finetune':
-                if len(batch) == 2: # single-sentence classification
-                    sentence, targets = batch
+                if len(train_batch) == 2: # single-sentence classification
+                    sentence, targets = train_batch
                     sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
                     preds = experiment.model(sentence)
-                elif len(batch) == 3: # sentence-pair classification
-                    sentence1, sentence2, targets = batch
+                elif len(train_batch) == 3: # sentence-pair classification
+                    sentence1, sentence2, targets = train_batch
                     # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
                     sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
                     targets = targets.to(device)
                     preds = experiment.model(sentence_stacked)
                 else:
-                    raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+                    raise ValueError(f'Expected train_batch of length 2 or 3, got {len(train_batch)}')
                 train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
             else:
-                # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
-                batch = (t.to(device) for t in batch)
-                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch)
+                # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = train_batch
+                train_batch = (t.to(device) for t in train_batch)
+                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*train_batch)
                 train_loss = experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
             
             train_loss.backward()
@@ -230,25 +246,25 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches
                 with torch.no_grad():
-                    for batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
+                    for test_batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
                         if args.experiment == 'finetune':
-                            if len(batch) == 2: # single-sentence classification
-                                sentence, targets = batch
+                            if len(test_batch) == 2: # single-sentence classification
+                                sentence, targets = test_batch
                                 sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
                                 preds = experiment.model(sentence)
-                            elif len(batch) == 3: # sentence-pair classification
-                                sentence1, sentence2, targets = batch
+                            elif len(test_batch) == 3: # sentence-pair classification
+                                sentence1, sentence2, targets = test_batch
                                 # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
                                 sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
                                 targets = targets.to(device)
                                 preds = experiment.model(sentence_stacked)
                             else:
-                                raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+                                raise ValueError(f'Expected test_batch of length 2 or 3, got {len(test_batch)}')
                             experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
-                            # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
-                            batch = (t.to(device) for t in batch)
-                            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*batch) 
+                            # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = test_batch
+                            test_batch = (t.to(device) for t in test_batch)
+                            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*test_batch) 
                             experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
                 # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics(training_step, epoch)
@@ -256,9 +272,10 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 # Set model back in train mode to resume training
                 experiment.model.train() 
             
-            # End of epoch step, increment counter
+            # End of step, increment counter
             training_step += 1
-            
+
+        # End of epoch
         if (epoch+1) % args.epochs_per_model_save == 0:
             checkpoint = {
                 'step': training_step, 

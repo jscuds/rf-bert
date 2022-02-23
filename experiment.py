@@ -128,17 +128,13 @@ class RetrofitExperiment(Experiment):
             train_split=self.args.train_test_split
         )
         # if we're tracking examples for a table, setup the table configuration
-        self.wb_table = (
-            TableLog(
-                num_table_examples=self.args.num_table_examples,
-                train_dataloader=train_dataloader,
-                test_dataloader=test_dataloader,
-                columns=["index", "epoch", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+        if self.args.num_table_examples is not None:
+            self.wb_table = (
+                TableLog(
+                    num_table_examples=self.args.num_table_examples,
+                    columns=["epoch", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+                )
             )
-        )
-        # Gets examples to track in a W&B Table
-        # Updates internal dictionaries
-        self.wb_table.get_tracked_examples()
 
         return train_dataloader, test_dataloader
 
@@ -174,7 +170,7 @@ class RetrofitExperiment(Experiment):
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
             word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
-            gamma: float
+            gamma: float, epoch: int
         ) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor,torch.Tensor]:
         """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
         
@@ -202,17 +198,28 @@ class RetrofitExperiment(Experiment):
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
 
-        # Populate tracked examples in dictionaries for W&B table.
-        # Handle exception for test_loss.py because RetrofitExperiment.get_dataloaders() isn't called.
+        # If a batch hasn't been added from this epoch to wb_table add it for train/test
         if self.wb_table is not None:
-            if len(self.wb_table.batch_indices) > 0:
-                for ex_idx, b_idx in self.wb_table.batch_indices.items():
-                    self.wb_table.table_hinge_loss[ex_idx] = loss[b_idx]
-                    self.wb_table.table_pos_word_dist[ex_idx] = positive_pair_distance[b_idx]
-                    self.wb_table.table_neg_word_dist[ex_idx] = negative_pair_distance[b_idx]
+            if self.model.training and (epoch not in self.wb_table.train_epochs_sampled):
+                split = 'train'
+                self._wb_table_add_loss_and_dists(epoch, split, loss, positive_pair_distance, negative_pair_distance)
+                self.wb_table.train_epochs_sampled.append(epoch)
+
+            elif not self.model.training and (epoch not in self.wb_table.test_epochs_sampled):
+                split = 'validation'
+                self._wb_table_add_loss_and_dists(epoch, split, loss, positive_pair_distance, negative_pair_distance)
+                self.wb_table.test_epochs_sampled.append(epoch)            
 
         return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
         
+    def _wb_table_add_loss_and_dists(self, epoch: int, split: str, loss: torch.Tensor, 
+                                         positive_pair_distance: torch.Tensor, negative_pair_distance: torch.Tensor) -> None:
+        """Helper function for capturing individual example losses and distances for a W&B table."""
+        for i in range(self.wb_table.num_table_examples):
+            key = (epoch,i,split)
+            self.wb_table.table_hinge_loss[key] = loss[i]
+            self.wb_table.table_pos_word_dist[key] = positive_pair_distance[i]
+            self.wb_table.table_neg_word_dist[key] = negative_pair_distance[i]
         
     def orthogonalization_loss(self, M: torch.Tensor) -> torch.Tensor:
         """L_o = ||I - M^T M||"""
@@ -221,7 +228,7 @@ class RetrofitExperiment(Experiment):
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
         return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
-    def compute_loss_and_update_metrics(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
+    def compute_loss_and_update_metrics(self, epoch: int, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
                      word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
@@ -243,7 +250,7 @@ class RetrofitExperiment(Experiment):
         hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
-            self.rf_gamma
+            self.rf_gamma, epoch
         )
         orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss

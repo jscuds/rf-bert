@@ -61,22 +61,22 @@ class TableLog:
 
     def update_wandb_table(self) -> None:
         """Update rows of example table at the end of training."""
-        # columns ["epoch", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
-        # columns [epoch, positive, sent1, sent2, pos_word, pos_distance, hinge_loss, split]
-        #         [epoch, negative, sent1, sent2, neg_word, neg_distance, hinge_loss, split] 
+        # columns ["epoch", "index", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+        # columns [epoch, index, positive, sent1, sent2, pos_word, pos_distance, hinge_loss, split]
+        #         [epoch, index, negative, sent1, sent2, neg_word, neg_distance, hinge_loss, split] 
         
         # Each example will have 2 rows: Row A = Positive, Row B = Negative
         for epoch, i, split in sorted(self.table_pos_sent1_str.keys()):
             key = (epoch,i,split)
             # Row A
             self.final_table.add_data(
-                epoch, 'positive', self.table_pos_sent1_str[key], self.table_pos_sent2_str[key],
+                epoch, i, 'positive', self.table_pos_sent1_str[key], self.table_pos_sent2_str[key],
                 self.table_pos_target_word[key], self.table_pos_word_dist[key],
                 self.table_hinge_loss[key], split
             )
             # Row B
             self.final_table.add_data(
-                i, epoch, 'negative', self.table_neg_sent1_str[key], self.table_neg_sent2_str[key],
+                epoch, i, 'negative', self.table_neg_sent1_str[key], self.table_neg_sent2_str[key],
                 self.table_neg_target_word[key], self.table_neg_word_dist[key],
                 self.table_hinge_loss[key], split
             )

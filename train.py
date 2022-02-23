@@ -256,7 +256,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                             experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
                             # if first batch, log examples for W&B table
-                            if _epoch_step == 0 and args.num_table_examples is not None:
+                            if _test_step == 0 and args.num_table_examples is not None:
                                 experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *batch)
                             # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
                             batch = (t.to(device) for t in batch)

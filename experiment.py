@@ -132,7 +132,7 @@ class RetrofitExperiment(Experiment):
             self.wb_table = (
                 TableLog(
                     num_table_examples=self.args.num_table_examples,
-                    columns=["epoch", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+                    columns=["epoch", "index", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
                 )
             )
 

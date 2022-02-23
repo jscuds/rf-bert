@@ -101,6 +101,7 @@ class RetrofitExperiment(Experiment):
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
         self.metrics = []
+        self.wb_table = None
 
         # Lists to store things over batch for histograms
         self.pos_dist_list = []
@@ -185,8 +186,8 @@ class RetrofitExperiment(Experiment):
         """
         assert word_rep_pos_1.shape == word_rep_pos_2.shape
         assert word_rep_neg_1.shape == word_rep_neg_2.shape
-        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=-1) # NOTE(js) changed from dim=1 to dim=-1 to work with batch_size=1
-        negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=-1) # shape: (batch_size,) if keepdim=False
+        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1)
+        negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
 
         loss = positive_pair_distance + gamma - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
@@ -203,14 +204,13 @@ class RetrofitExperiment(Experiment):
 
         # Populate tracked examples in dictionaries for W&B table.
         # Handle exception for test_loss.py because RetrofitExperiment.get_dataloaders() isn't called.
-        try:
+        if self.wb_table is not None:
             if len(self.wb_table.batch_indices) > 0:
                 for ex_idx, b_idx in self.wb_table.batch_indices.items():
                     self.wb_table.table_hinge_loss[ex_idx] = loss[b_idx]
                     self.wb_table.table_pos_word_dist[ex_idx] = positive_pair_distance[b_idx]
                     self.wb_table.table_neg_word_dist[ex_idx] = negative_pair_distance[b_idx]
-        except AttributeError:
-            pass
+
         return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
         
         

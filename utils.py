@@ -60,19 +60,27 @@ def elmo_sentence_decode(sent: torch.Tensor) -> str:
     """
     Decodes a sentence of ELMo character_ids with the shape [1,sequence_length,50] into a readable sentence string.
     Useful for debugging when you only have a ParaDatasetElmo object and its various tensor/tuple/sent_id returns.
+
+    - 259 is the beginning of word character
+    - 260 is the end of word character
+    - 261 is the padding character
+
+    From [AllenNLP's ELMo Tokenizer]
+    (https://github.com/allenai/allennlp/blob/b8f92f036e37015aabe0d76aabf2722597c7686f/allennlp/data/token_indexers/elmo_indexer.py#L38-L44) 
+    "char ids 0-255 come from utf-8 encoding bytes."  Based on trial and error, for some reason, the values are off by 1.  
+    Example: 260 should be the "padding character", but in reality it's 261.
     """
     sent = tuple([tuple(word.tolist()) for word in sent.squeeze()])
     full_sent = []
     for word in sent:
         if word == tuple([0]*50): continue
-        word_concat = []
+        chars_in_word = []
         for char in word:
-            # print(char)
-            if char == 259: continue
-            if char == 260: break
-            if char == 261: break
-            word_concat.append(chr(char-1))
-        full_sent.append(''.join(word_concat))
+            if char == 259: continue # beginning of word character
+            if char == 260: break    # end of word character
+            if char == 261: break    # padding character
+            chars_in_word.append(chr(char-1))
+        full_sent.append(''.join(chars_in_word))
     return ' '.join(full_sent)
 
 def elmo_word_decode(word: Tuple) -> str:
@@ -80,10 +88,10 @@ def elmo_word_decode(word: Tuple) -> str:
     Decodes a word tuple of ELMo character_ids with length=50 into a readable sentence string.
     Useful for debugging when you only have a ParaDatasetElmo object and its various tensor/tuple/sent_id returns.
     """
-    word_concat = []
+    chars_in_word = []
     for char in word:
-        if char == 259: continue
-        if char == 260: break
-        word_concat.append(chr(char-1))
+        if char == 259: continue # beginning of word character
+        if char == 260: break    # end of word character
+        chars_in_word.append(chr(char-1))
 
-    return ''.join(word_concat)
+    return ''.join(chars_in_word)

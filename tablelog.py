@@ -1,32 +1,20 @@
-import argparse
-import copy
-import glob
-import json
-import logging
-import os
 import random
-import shutil
-import time
-from pathlib import Path
 from typing import Dict, List, Tuple
 
-import numpy as np
-import pytest
 import torch
-import tqdm
 import wandb
 from torch.utils.data import DataLoader
 
 
 from utils import elmo_sentence_decode
 
-class TableLog():
+class TableLog:
     """A class to log W&B tables for specific examples over each epoch of retrofitting."""
     
-    def __init__(self, num_table_examples:int, train_dataloader: DataLoader, test_dataloader: DataLoader, columns:List[str]):
+    def __init__(self, num_table_examples: int, train_dataloader: DataLoader, test_dataloader: DataLoader, columns:List[str]):
 
         # Sample k examples from the indices in the train/test dataset, respectively
-        self.num_table_examples = num_table_examples
+        self.num_table_examples: int = num_table_examples
         self.table_train_indices: List[int] = random.sample(train_dataloader.sampler.indices, k=self.num_table_examples)
         self.table_test_indices: List[int] = random.sample(test_dataloader.sampler.indices, k=self.num_table_examples)
         self.id_to_sent: Dict[int, Tuple[Tuple[int,...],...]] = train_dataloader.dataset._id_to_sent # dict; lookup sentence given sentence_id
@@ -80,7 +68,6 @@ class TableLog():
             assert pos_sent1_str.split(' ')[token1] == pos_sent2_str.split(' ')[token2] # assert that the word is the same in both pos_sent1 & pos_sent2
             self.table_pos_target_word[i] = pos_sent1_str.split(' ')[token1]
 
-    # TODO: called every time a batch is passed in the train/val loop from the respective dataloader
     def check_tracked_indices(self, pos_sent_1: torch.Tensor, pos_sent_2: torch.Tensor,
                               neg_sent_1: torch.Tensor, neg_sent_2: torch.Tensor,
                               pos_token_1: torch.Tensor, pos_token_2: torch.Tensor,

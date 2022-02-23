@@ -15,11 +15,11 @@ WEIGHT_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_51
 
 class ElmoLstmWithTransformation(torch.nn.Module):
     """Appends a linear transformation (via inner `M` matrix) to ElmoLstm."""
-    def __init__(self, lstm: ElmoLstm, embedding_dim=512): # embedding_dim matches ElmoLstm default
+    def __init__(self, lstm: ElmoLstm, embedding_dim=512, requires_grad=True): # embedding_dim matches ElmoLstm default
         super().__init__()
         self.lstm = lstm
         self.M = torch.nn.Parameter(
-            torch.eye(embedding_dim, dtype=torch.float32), requires_grad=True
+            torch.eye(embedding_dim, dtype=torch.float32), requires_grad=requires_grad
         )
         self.register_parameter('M', self.M) # TODO does this do anything?
 
@@ -56,6 +56,7 @@ class ElmoClassifier(torch.nn.Module):
         sentence_pair (bool): Whether to do sentence-pair or single-sentence classification
         linear_hidden_dim (int): size of the linear classifier hidden dimensions
         m_transform (bool): use `M` from ElmoLstmWithTransformation 
+        m_transform_requires_grad (bool): Whether or not `M` should be trainable
 
     https://github.com/allenai/allennlp/blob/main/allennlp/modules/elmo.py
     """
@@ -65,7 +66,8 @@ class ElmoClassifier(torch.nn.Module):
                  num_output_representations: int=1, requires_grad: bool=False, 
                  dropout: float=0, embedding_dim: int=512, # embedding_dim matches ElmoLstm default
                  sentence_pair: bool = False,
-                 linear_hidden_dim: int=512, m_transform: bool=True):
+                 linear_hidden_dim: int=512, m_transform: bool = True,
+                 m_transform_requires_grad: bool = True):
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
                          num_output_representations = num_output_representations,
@@ -75,7 +77,8 @@ class ElmoClassifier(torch.nn.Module):
         # to the embeddings before passing them to the LSTM.
         if m_transform:
             lstm_with_transformation = ElmoLstmWithTransformation(
-                self.elmo._elmo_lstm._elmo_lstm, embedding_dim=embedding_dim
+                self.elmo._elmo_lstm._elmo_lstm, embedding_dim=embedding_dim,
+                requires_grad=m_transform_requires_grad
             )
             self.elmo._elmo_lstm._elmo_lstm = lstm_with_transformation
         self.elmo_hidden_size = self.elmo.get_output_dim() 
@@ -129,6 +132,7 @@ class ElmoClassifier(torch.nn.Module):
             assert cat_vect.shape == (u.shape[0],u.shape[1]*3+1) # shape [batch, 1024*3+1]
             x = self.linear1(cat_vect)
         x = self.relu(x)
+        # TODO(jxm): should we regularize here? there is so much overfitting?
         logits = self.linear2(x)
         logits = logits.squeeze(dim=-1) # squeeze away dimension of length 1
         assert logits.shape == (B,)
@@ -169,7 +173,8 @@ class ElmoRetrofit(torch.nn.Module):
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.
         lstm_with_transformation = ElmoLstmWithTransformation(
-            self.elmo._elmo_lstm._elmo_lstm, embedding_dim=embedding_dim
+            self.elmo._elmo_lstm._elmo_lstm, embedding_dim=embedding_dim,
+            requires_grad=True
         )
         self.elmo._elmo_lstm._elmo_lstm = lstm_with_transformation
         self.elmo_hidden_size = self.elmo.get_output_dim() 

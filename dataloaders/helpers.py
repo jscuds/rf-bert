@@ -94,7 +94,7 @@ def dataloader_from_dataset(
     
     # epochs = 5
     sampler = BatchSampler(
-        RandomSampler(dataset, replacement=True, num_samples=len(dataset)),
+        RandomSampler(dataset, replacement=False),
         batch_size = batch_size, drop_last = drop_last
     )
     return DataLoader(dataset,

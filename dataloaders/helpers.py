@@ -126,6 +126,40 @@ def load_rotten_tomatoes(
     return train_dataloader, test_dataloader
 
 
+def load_sst2(
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+    ) -> Tuple[DataLoader, DataLoader]:
+    dataset = datasets.load_dataset('glue', 'sst2').shuffle(seed=random_seed)
+    if num_examples:
+        # For some reason, truncating datasets like this returns a plain dict,
+        # so need to call Dataset.from_dict to restore as a Dataset type.
+        for split in dataset:
+            dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
+
+    dataset = prepare_dataset_with_elmo_tokenizer(
+        dataset=dataset,
+        text_columns=['sentence'],
+        max_length=max_length
+    )
+    train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
+
+    print('Loading QQP dataset with', num_examples, 'examples')
+
+    train_dataset.set_format(type='torch', columns=['sentence', 'label'])
+    test_dataset.set_format(type='torch', columns=['sentence', 'label'])
+
+    train_dataloader = dataloader_from_dataset(
+        dataset=train_dataset, text_columns=['sentence'], label_columns=['label'],
+        batch_size=batch_size, shuffle=True, drop_last=drop_last
+    )
+    test_dataloader = dataloader_from_dataset(
+        dataset=test_dataset, text_columns=['sentence'], label_columns=['label'],
+        batch_size=batch_size, shuffle=True, drop_last=drop_last
+    )
+    breakpoint()
+    return train_dataloader, test_dataloader
+
+
 def load_qqp(
         batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
     ) -> Tuple[DataLoader, DataLoader]:
@@ -143,7 +177,7 @@ def load_qqp(
     )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
-    print('Loading rotten tomatoes dataset with', num_examples, 'examples')
+    print('Loading QQP dataset with', num_examples, 'examples')
 
     train_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])
     test_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])

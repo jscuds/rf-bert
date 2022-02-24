@@ -9,7 +9,7 @@ class TestTableLog:
     def test_wb_table_final_data(self):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         args = get_argparser().parse_args(
-                    ['retrofit', '--epochs', '1', '--num_examples', '6', '--batch_size', '2', '--random_seed','42', '--num_table_examples','1']#,'--num_table_examples','None']
+                    ['retrofit', '--epochs', '1', '--num_examples', '6', '--batch_size', '2', '--random_seed','42', '--num_table_examples','1']
                 )
         set_random_seed(args.random_seed)
         experiment = RetrofitExperiment(args)
@@ -57,10 +57,10 @@ class TestTableLog:
                 [0, 0, 'negative', 'What is the Lewis structure of PBR3 ? How is it determined ?', 'What is the Lewis structure for KrF2 ? How is it determined ?', 'structure', 'validation']
             ])
 
-            # check columns of table
+            # Check columns of table
             assert experiment.wb_table.final_table.columns == test_column_list
 
-            # check all columns that aren't tensors:
+            # Check all columns that aren't tensors:
             # ['epoch', 'index', 'positive/negative', 'sent1', 'sent2', 'shared_word', 'word_distance', 'hinge_loss', 'split']
             #    not 'word_distance' or 'hinge_loss'
             for i,data_row in enumerate(experiment.wb_table.final_table.data):

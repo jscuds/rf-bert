@@ -135,6 +135,11 @@ def run_training_loop(args: argparse.Namespace) -> str:
         "train_dataloader_len": len(train_dataloader),
         "test_dataloader_len": len(test_dataloader), 
     })
+    # Remove these args from the W&B config listing to prevent clutter
+    if args.wandb_tags:
+        del config_dict['wandb_tags']
+    if args.wandb_notes: 
+        del config_dict['wandb_notes']
     
     wandb.init(
         name=exp_name,

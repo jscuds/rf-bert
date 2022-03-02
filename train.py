@@ -222,7 +222,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for _train_step, train_batch in tqdm.tqdm(train_dataloader, total=len(train_dataloader), desc='Training', leave=False):
+        for _train_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
             if args.experiment == 'finetune':
                 if len(train_batch) == 2: # single-sentence classification
                     sentence, targets = train_batch

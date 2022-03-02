@@ -10,6 +10,8 @@ import torch
 
 from allennlp.modules.elmo import batch_to_ids
 from mosestokenizer import MosesTokenizer
+
+from torch.utils.data import BatchSampler, RandomSampler
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
@@ -54,7 +56,7 @@ def elmo_tokenize_and_pad(
     if pad_size > 0:
         padding = torch.zeros(pad_size, 50, dtype=int)
         text_ids = torch.cat((text_ids, padding), dim=0)
-    return text_ids
+    return text_ids.tolist()
 
 
 def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_length: int):
@@ -84,19 +86,21 @@ def dataloader_from_dataset(
     def collate_fn(batch):
         """`batch` is a list with `batch_size` elements. Each element is a dict with
         `label` and `text_ids` keys."""
-        # TODO(jxm): This is super slow; speed up this function.
-        d = collections.defaultdict(list)
-        for el in batch:
-            for k in text_columns:
-                d[k].append(torch.stack(el[k])) # shape (seq_length, 50)
-            for k in label_columns:
-                d[k].append(el[k]) # shape ()
-        # stack all lists into tensors and return in the proper order
-        return tuple(torch.stack(d[k]) for k in text_columns) + tuple(torch.stack(d[k]).float() for k in label_columns)
+        batch = batch[0] # RandomSampler wraps batch in extra dimension
+        return (
+            tuple(torch.tensor(batch[k]) for k in text_columns) 
+          + tuple(torch.tensor(batch[k]).float() for k in label_columns)
+        )
+    
+    # epochs = 5
+    sampler = BatchSampler(
+        RandomSampler(dataset, replacement=True, num_samples=len(dataset)),
+        batch_size = batch_size, drop_last = drop_last
+    )
     return DataLoader(dataset,
-        batch_size=batch_size, collate_fn=collate_fn,
-        shuffle=shuffle, drop_last=drop_last, pin_memory=torch.cuda.is_available(),
-        num_workers=min(8, num_cpus)
+        collate_fn=collate_fn,
+        sampler=sampler, pin_memory=torch.cuda.is_available(),
+        # num_workers=min(8, num_cpus)
     )
 
 
@@ -116,9 +120,6 @@ def load_rotten_tomatoes(
     train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
 
     logger.info('Loading Rotten Tomatoes dataset with %d examples', len(train_dataset))
-
-    train_dataset.set_format(type='torch', columns=['text', 'label'])
-    test_dataset.set_format(type='torch', columns=['text', 'label'])
 
     train_dataloader = dataloader_from_dataset(
         train_dataset, text_columns=['text'], label_columns=['label'],
@@ -150,9 +151,6 @@ def load_sst2(
 
     logger.info('Loading SST-2 dataset with %d examples', len(train_dataset))
 
-    train_dataset.set_format(type='torch', columns=['sentence', 'label'])
-    test_dataset.set_format(type='torch', columns=['sentence', 'label'])
-
     train_dataloader = dataloader_from_dataset(
         dataset=train_dataset, text_columns=['sentence'], label_columns=['label'],
         batch_size=batch_size, shuffle=True, drop_last=drop_last
@@ -182,9 +180,6 @@ def load_qqp(
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
     logger.info('Loading QQP dataset with %d examples', len(train_dataset))
-
-    train_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])
-    test_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])
 
     train_dataloader = dataloader_from_dataset(
         dataset=train_dataset, text_columns=['question1', 'question2'], label_columns=['label'],

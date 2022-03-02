@@ -60,6 +60,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='lambda - regularization constant for retrofitting loss')
     parser.add_argument('--rf_gamma', type=float, default=2,
         help='gamma - margin constant for retrofitting loss')
+    parser.add_argument('--num_table_examples', type=int, default=None,
+        help='examples to watch in both train/test sets - will log to W&B Table')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -98,6 +100,10 @@ def run_training_loop(args: argparse.Namespace) -> str:
         logger.warn("Batch size (%d) cannot be greater than num examples (%d), decreasing batch size", args.batch_size, args.num_examples)
         args.batch_size = args.num_examples
     
+    if (args.num_table_examples is not None) and (args.num_table_examples > args.batch_size):
+        logger.warn("Batch size (%d) cannot be greater than num table examples (%d), decreasing num table examples", args.batch_size, args.num_table_examples)
+        args.num_table_examples = args.batch_size
+
     # dictionary that matches experiment argument to its respective class
     experiment_cls = {
         'retrofit': RetrofitExperiment,
@@ -216,7 +222,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
     training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for train_batch in tqdm.tqdm(train_dataloader, total=len(train_dataloader), desc='Training', leave=False):
+        for _train_step, train_batch in tqdm.tqdm(train_dataloader, total=len(train_dataloader), desc='Training', leave=False):
             if args.experiment == 'finetune':
                 if len(train_batch) == 2: # single-sentence classification
                     sentence, targets = train_batch
@@ -232,10 +238,14 @@ def run_training_loop(args: argparse.Namespace) -> str:
                     raise ValueError(f'Expected train_batch of length 2 or 3, got {len(train_batch)}')
                 train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
             else:
+
+                # if first batch, log examples for W&B table
+                if _train_step == 0 and args.num_table_examples is not None:
+                    experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *train_batch)
                 # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = train_batch
                 train_batch = (t.to(device) for t in train_batch)
                 word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*train_batch)
-                train_loss = experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
+                train_loss = experiment.compute_loss_and_update_metrics(epoch, word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
             
             train_loss.backward()
             optimizer.step()
@@ -246,11 +256,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches
                 with torch.no_grad():
-                    for test_batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
+
+                    for _test_step, test_batch in tqdm.tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Evaluating', leave=False):
                         if args.experiment == 'finetune':
                             if len(test_batch) == 2: # single-sentence classification
                                 sentence, targets = test_batch
-                                sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+                                sentence, targets = sentence.to(device), targets.to(device)
+
                                 preds = experiment.model(sentence)
                             elif len(test_batch) == 3: # sentence-pair classification
                                 sentence1, sentence2, targets = test_batch
@@ -262,10 +274,15 @@ def run_training_loop(args: argparse.Namespace) -> str:
                                 raise ValueError(f'Expected test_batch of length 2 or 3, got {len(test_batch)}')
                             experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
                         else:
+
+                            # if first batch, log examples for W&B table
+                            if _test_step == 0 and args.num_table_examples is not None:
+                                experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *test_batch)
                             # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = test_batch
-                            test_batch = (t.to(device) for t in test_batch)
+                            batch = (t.to(device) for t in test_batch)
                             word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*test_batch) 
-                            experiment.compute_loss_and_update_metrics(word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
+                            experiment.compute_loss_and_update_metrics(epoch, word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
+
                 # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics(training_step, epoch)
                 wandb.log(metrics_dict, step=training_step)
@@ -292,7 +309,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
         wandb.log({"Epoch Time": (epoch_end_time-epoch_start_time)/60})
 
         epoch_start_time = time.time()
+
     logging.info(f'***** Training finished after {args.epochs} epochs *****')
+
+    # After training, log example table
+    if args.experiment == 'retrofit' and args.num_table_examples is not None:
+        experiment.wb_table.update_wandb_table()
+        wandb.log({'sampled_examples_table':experiment.wb_table.final_table}) 
 
     # Save final model
     final_save_path = os.path.join(
@@ -309,7 +332,7 @@ if __name__ == '__main__':
     run_training_loop(args)
 
     
-# TODO(js): after confirming retrofitting works; fix `run_training_loop()` to work for either case
+# TODO(js):
 #   - update Dataset __getitem__ to return dictionary of kwargs
 #   - update models to receive kwargs passed from applicable Dataset objects
     

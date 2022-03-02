@@ -53,7 +53,7 @@ class TestRetrofitLoss:
         a = torch.tensor([[1, 0, 1, 0]], dtype=float)
         b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         assert self.experiment.retrofit_hinge_loss(
-            a, a, b, b, 0
+            a, a, b, b, 0, 0
         )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_equal_dist(self):
@@ -62,8 +62,9 @@ class TestRetrofitLoss:
         a = torch.tensor([[1, 0, 1, 0]], dtype=float)
         b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         gamma = 5.0
+        epoch = 1
         assert self.experiment.retrofit_hinge_loss(
-            a, b, a, b, gamma
+            a, b, a, b, gamma, epoch
         )[0] == gamma #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_best_case_big_margin(self):
@@ -78,8 +79,9 @@ class TestRetrofitLoss:
         b1 = torch.tensor([[0, 100, 0, 100]], dtype=float)
         b2 = torch.tensor([[0, -100, 0, -100]], dtype=float) 
         gamma = 20.0
+        epoch = 1
         assert self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma
+            a1, a2, b1, b2, gamma, epoch
         )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_worst_case(self):
@@ -94,8 +96,9 @@ class TestRetrofitLoss:
         b1 = torch.tensor([[1, 0, 1, 0]], dtype=float)
         b2 = a1 + torch.rand_like(a1) / 100.0
         gamma = 10.0
+        epoch = 1
         loss = self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma
+            a1, a2, b1, b2, gamma, epoch
         )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > gamma
     
@@ -114,7 +117,8 @@ class TestRetrofitLoss:
         b1 = torch.tensor([[1, 0, 1, 0], [1, 0, 1, 0]], dtype=float)
         b2 = a1 + torch.rand_like(a1) / 100.0
         gamma = 5.0
+        epoch = 1
         loss = self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma
+            a1, a2, b1, b2, gamma, epoch
         )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > 50

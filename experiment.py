@@ -11,6 +11,7 @@ from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
+from tablelog import TableLog
 from utils import TensorRunningAverages, log_wandb_histogram
 
 
@@ -23,6 +24,7 @@ class Experiment(abc.ABC):
     dataset: Dataset
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
+    wb_table: TableLog
 
     @abc.abstractmethod
     def __init__(self, args: argparse.Namespace):
@@ -83,6 +85,7 @@ class RetrofitExperiment(Experiment):
     model: ElmoRetrofit
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
+    wb_table: TableLog
 
     def __init__(self, args: argparse.Namespace):
         assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
@@ -98,6 +101,7 @@ class RetrofitExperiment(Experiment):
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
         self.metrics = []
+        self.wb_table = None
 
         # Lists to store things over batch for histograms
         self.pos_dist_list = []
@@ -115,12 +119,23 @@ class RetrofitExperiment(Experiment):
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
-        # test data from quora
+        # test data from quora 
+        #
+        # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
         train_dataloader, test_dataloader = train_test_split(
             dataset, batch_size=self.args.batch_size, 
             shuffle=True, drop_last=self.args.drop_last, 
             train_split=self.args.train_test_split
         )
+        # if we're tracking examples for a table, setup the table configuration
+        if self.args.num_table_examples is not None:
+            self.wb_table = (
+                TableLog(
+                    num_table_examples=self.args.num_table_examples,
+                    columns=["epoch", "index", "positive/negative", "sent1", "sent2", "shared_word", "word_distance", "hinge_loss", "split"]
+                )
+            )
+
         return train_dataloader, test_dataloader
 
     @property
@@ -155,8 +170,8 @@ class RetrofitExperiment(Experiment):
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
             word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
-            gamma: float
-        ) -> torch.Tensor:
+            gamma: float, epoch: int
+        ) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor,torch.Tensor]:
         """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
         
         Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
@@ -167,7 +182,7 @@ class RetrofitExperiment(Experiment):
         """
         assert word_rep_pos_1.shape == word_rep_pos_2.shape
         assert word_rep_neg_1.shape == word_rep_neg_2.shape
-        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1) # TODO: need keepdim=True??
+        positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1)
         negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
 
         loss = positive_pair_distance + gamma - negative_pair_distance
@@ -182,8 +197,29 @@ class RetrofitExperiment(Experiment):
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
+
+        # If a batch hasn't been added from this epoch to wb_table add it for train/test
+        if self.wb_table is not None:
+            if self.model.training and (epoch not in self.wb_table.train_epochs_sampled):
+                split = 'train'
+                self._wb_table_add_loss_and_dists(epoch, split, loss, positive_pair_distance, negative_pair_distance)
+                self.wb_table.train_epochs_sampled.append(epoch)
+
+            elif not self.model.training and (epoch not in self.wb_table.test_epochs_sampled):
+                split = 'validation'
+                self._wb_table_add_loss_and_dists(epoch, split, loss, positive_pair_distance, negative_pair_distance)
+                self.wb_table.test_epochs_sampled.append(epoch)            
+
         return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
         
+    def _wb_table_add_loss_and_dists(self, epoch: int, split: str, loss: torch.Tensor, 
+                                         positive_pair_distance: torch.Tensor, negative_pair_distance: torch.Tensor) -> None:
+        """Helper function for capturing individual example losses and distances for a W&B table."""
+        for i in range(self.wb_table.num_table_examples):
+            key = (epoch,i,split)
+            self.wb_table.table_hinge_loss[key] = loss[i]
+            self.wb_table.table_pos_word_dist[key] = positive_pair_distance[i]
+            self.wb_table.table_neg_word_dist[key] = negative_pair_distance[i]
         
     def orthogonalization_loss(self, M: torch.Tensor) -> torch.Tensor:
         """L_o = ||I - M^T M||"""
@@ -192,7 +228,7 @@ class RetrofitExperiment(Experiment):
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
         return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
-    def compute_loss_and_update_metrics(self, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
+    def compute_loss_and_update_metrics(self, epoch: int, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
                      word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
@@ -214,7 +250,7 @@ class RetrofitExperiment(Experiment):
         hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
             word_rep_pos_1, word_rep_pos_2,
             word_rep_neg_1, word_rep_neg_2,
-            self.rf_gamma
+            self.rf_gamma, epoch
         )
         orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss

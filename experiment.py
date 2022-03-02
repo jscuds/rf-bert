@@ -8,7 +8,9 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from dataloaders import ParaphraseDatasetElmo
-from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
+from dataloaders.helpers import (
+    load_rotten_tomatoes, load_qqp, load_sst2, train_test_split
+)
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
 from tablelog import TableLog
@@ -315,6 +317,12 @@ class FinetuneExperiment(Experiment):
             )
         elif self.args.dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
+                max_length=self.args.max_length, batch_size=self.args.batch_size,
+                num_examples=self.args.num_examples, drop_last=self.args.drop_last,
+                random_seed=self.args.random_seed
+            )
+        elif self.args.dataset_name == 'sst2':
+            train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
                 random_seed=self.args.random_seed

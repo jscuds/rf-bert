@@ -6,7 +6,7 @@ import torch
 from dataloaders import ParaphraseDatasetBert, ParaphraseDatasetElmo
 from mosestokenizer import MosesTokenizer
 
-from dataloaders.helpers import load_rotten_tomatoes, load_qqp, train_test_split
+from dataloaders.helpers import load_rotten_tomatoes, load_qqp, load_sst2, train_test_split
 
 # Instantiate ParaphraseDataset class variants for BERT and ELMo
 
@@ -190,5 +190,20 @@ class TestClassificationDatasets:
         # Make sure sentences are the proper shape
         assert s1.shape == (batch_size, max_length, 50)
         assert s2.shape == (batch_size, max_length, 50)
+        # make sure all labels in batch are in {0, 1}
+        assert torch.logical_or(labels == 0, labels == 1).all()
+    
+    def test_sst2_elmo(self):
+        batch_size = 17
+        num_examples = 50
+        max_length = 20
+        train_dataloader, test_dataloader = load_sst2(
+            batch_size=batch_size, max_length=max_length,
+            num_examples=num_examples, drop_last=False
+        )
+        item = next(iter(train_dataloader))
+        s1, labels = item
+        # Make sure sentences are the proper shape
+        assert s1.shape == (batch_size, max_length, 50)
         # make sure all labels in batch are in {0, 1}
         assert torch.logical_or(labels == 0, labels == 1).all()

@@ -1,6 +1,7 @@
 from typing import Callable, List, Tuple
 
 import collections
+import logging
 import os
 
 import datasets
@@ -12,6 +13,7 @@ from mosestokenizer import MosesTokenizer
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
 
+logger = logging.getLogger(__name__)
 
 num_cpus = len(os.sched_getaffinity(0)) # ask the OS how many cpus we have (stackoverflow.com/questions/1006289)
 
@@ -82,6 +84,7 @@ def dataloader_from_dataset(
     def collate_fn(batch):
         """`batch` is a list with `batch_size` elements. Each element is a dict with
         `label` and `text_ids` keys."""
+        # TODO(jxm): This is super slow; speed up this function.
         d = collections.defaultdict(list)
         for el in batch:
             for k in text_columns:
@@ -112,6 +115,8 @@ def load_rotten_tomatoes(
     # TODO: support arbitrary tokenizer (for any model)
     train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
 
+    logger.info('Loading Rotten Tomatoes dataset with %d examples', len(train_dataset))
+
     train_dataset.set_format(type='torch', columns=['text', 'label'])
     test_dataset.set_format(type='torch', columns=['text', 'label'])
 
@@ -121,6 +126,39 @@ def load_rotten_tomatoes(
     )
     test_dataloader = dataloader_from_dataset(
         test_dataset, text_columns=['text'], label_columns=['label'],
+        batch_size=batch_size, shuffle=True, drop_last=drop_last
+    )
+    return train_dataloader, test_dataloader
+
+
+def load_sst2(
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+    ) -> Tuple[DataLoader, DataLoader]:
+    dataset = datasets.load_dataset('glue', 'sst2').shuffle(seed=random_seed)
+    if num_examples:
+        # For some reason, truncating datasets like this returns a plain dict,
+        # so need to call Dataset.from_dict to restore as a Dataset type.
+        for split in dataset:
+            dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
+
+    dataset = prepare_dataset_with_elmo_tokenizer(
+        dataset=dataset,
+        text_columns=['sentence'],
+        max_length=max_length
+    )
+    train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
+
+    logger.info('Loading SST-2 dataset with %d examples', len(train_dataset))
+
+    train_dataset.set_format(type='torch', columns=['sentence', 'label'])
+    test_dataset.set_format(type='torch', columns=['sentence', 'label'])
+
+    train_dataloader = dataloader_from_dataset(
+        dataset=train_dataset, text_columns=['sentence'], label_columns=['label'],
+        batch_size=batch_size, shuffle=True, drop_last=drop_last
+    )
+    test_dataloader = dataloader_from_dataset(
+        dataset=test_dataset, text_columns=['sentence'], label_columns=['label'],
         batch_size=batch_size, shuffle=True, drop_last=drop_last
     )
     return train_dataloader, test_dataloader
@@ -143,7 +181,7 @@ def load_qqp(
     )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
-    print('Loading rotten tomatoes dataset with', num_examples, 'examples')
+    logger.info('Loading QQP dataset with %d examples', len(train_dataset))
 
     train_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])
     test_dataset.set_format(type='torch', columns=['question1', 'question2', 'label'])

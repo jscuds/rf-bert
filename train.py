@@ -233,11 +233,12 @@ def run_training_loop(args: argparse.Namespace) -> str:
                     for test_batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
                         experiment.compute_loss_and_update_metrics(
                             test_batch, metrics_key='Test', epoch=epoch, is_first_batch=is_first_batch)
+                # Advance learning rate scheduler (if there is one) after validation.
+                # (Note: we have to do this *before* logging metrics so test loss is not zero.)
+                experiment.step_lr_scheduler()
                 # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics(step=training_step, epoch=epoch)
                 wandb.log(metrics_dict, step=training_step)
-                # Advance learning rate scheduler (if there is one) after validation
-                experiment.step_lr_scheduler(epoch)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
             # End of step, increment counter

@@ -35,7 +35,6 @@ class TestTableLog:
                     experiment.compute_loss_and_update_metrics(
                         test_batch, metrics_key='Test', epoch=epoch, is_first_batch=(test_step == 0)
                     )
-        
             experiment.model.train()
         
         # Update table at the end of training.

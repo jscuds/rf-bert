@@ -79,8 +79,7 @@ class Experiment(abc.ABC):
         for name in sorted(self.metric_averages.keys()):
             val = self.metric_averages.get(name)
             all_metrics_dict[name] = val
-            # todo(jxm): use `logging` package here
-            logger.info('\t%s = %f', blue_text(name), blue_text(val))
+            logger.info(f'\t {blue_text(name)} = {blue_text(val)}')
         # Clear all metric averages and return the averages
         self.metric_averages.clear_all()
 
@@ -105,7 +104,7 @@ class Experiment(abc.ABC):
         """Returns train and test dataloaders."""
         raise NotImplementedError()
     
-    def step_lr_scheduler(self, epoch: int):
+    def step_lr_scheduler(self):
         """Advances LR scheduler if there is one."""
         pass
     
@@ -359,17 +358,17 @@ class FinetuneExperiment(Experiment):
     
     def create_lr_scheduler(self, args: argparse.Namespace, optimizer: torch.optim.Optimizer):
         """Creates a learning rate scheduler if there is one."""
-        # TODO: argparse for scheduler details.
+        # TODO: argparse for scheduler hyperparams.
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5,
             patience=2, min_lr=1e-6
         )
 
-    def step_lr_scheduler(self, epoch: int):
+    def step_lr_scheduler(self):
         """Advances LR scheduler if there is one."""
         test_loss = self.metric_averages.get('Test/Loss')
-        logging.info(f'[step_lr_scheduler] Advancing scheduler {self.scheduler} with test_loss = {test_loss:.4f} and epoch={epoch}')
-        self.scheduler.step(test_loss, epoch)
+        logging.info(f'[step_lr_scheduler] Advancing scheduler {type(self.scheduler)} with test_loss = {test_loss:.4f}')
+        self.scheduler.step(test_loss)
         logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:

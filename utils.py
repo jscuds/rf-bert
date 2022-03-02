@@ -3,9 +3,9 @@ from typing import Any, Dict, Set, Tuple, Union
 import functools
 
 import numpy as np
+import termcolor
 import torch
 import wandb
-
 
 class TensorRunningAverages:
     """Averages values over an arbitrary-size logging window."""
@@ -99,14 +99,11 @@ def elmo_word_decode(word: Tuple) -> str:
     return ''.join(chars_in_word)
 
 
-def colored_text(text: Any, r: int, g: int, b: int):
-    """Colors text for printing to terminal using ANSI escape codes."""
-    return "\033[38;2;{};{};{}m{} \033[38;2;255;255;255m".format(r, g, b, str(text))
-
-red_text = functools.partial(colored_text, r=255, g=0, b=0)
-blue_text = functools.partial(colored_text, r=0, g=0, b=255)
-green_text = functools.partial(colored_text, r=0, g=255, b=0)
-
 def get_lr(optimizer: torch.optim.Optimizer) -> float:
     for param_group in optimizer.param_groups:
         return param_group['lr']
+
+
+red_text = lambda x: termcolor.colored(str(x), 'red')
+blue_text = lambda x: termcolor.colored(str(x), 'blue')
+green_text = lambda x: termcolor.colored(str(x), 'green')

@@ -293,10 +293,11 @@ class FinetuneExperiment(Experiment):
         self.model = (
             ElmoClassifier(
                 num_output_representations = 1, 
-                requires_grad=True, 
+                requires_grad=False, 
                 dropout=0,
                 sentence_pair=(args.model_name == "elmo_sentence_pair"),
                 m_transform=args.finetune_rf,
+                m_transform_requires_grad=False,
             )
         )
         self._loss_fn = torch.nn.BCELoss()

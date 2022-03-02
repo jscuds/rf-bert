@@ -1,8 +1,9 @@
 import argparse
+import copy
 import json
 import logging
-import random
 import os
+import random
 import time
 from pathlib import Path
 
@@ -136,11 +137,16 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # NOTE(js): `args.model_name[:4]` just grabs "elmo" or "bert"; feel free to change later
     exp_name = f'{args.experiment}_{args.model_name[:4]}_{day}' 
     # WandB init and config (based on argument dictionaries in imports/globals cell)
-    config_dict = vars(args) 
+    config_dict = copy.copy(vars(args))
     config_dict.update({
         "train_dataloader_len": len(train_dataloader),
         "test_dataloader_len": len(test_dataloader), 
     })
+    # Remove these args from the W&B config listing to prevent clutter
+    if args.wandb_tags:
+        del config_dict['wandb_tags']
+    if args.wandb_notes: 
+        del config_dict['wandb_notes']
     
     wandb.init(
         name=exp_name,
@@ -199,7 +205,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
         # linear layer.
         # TODO: make this nicer, this is a little hacky.
         if len(missing_keys):
-            assert missing_keys == ['linear1.weight', 'linear1.bias', 'linear2.weight', 'linear2.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
+            assert missing_keys == ['classifier.1.weight', 'classifier.1.bias', 'classifier.4.weight', 'classifier.4.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
         # And there should definitely never be any weights we're loading that don't have
         # anywhere to go.
         assert len(unexpected_keys) == 0

@@ -23,28 +23,23 @@ class TestTableLog:
         #     2 rows will correspond to the pos/neg case for the _test_ set
         
         for epoch in range(args.epochs):
-            for train_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
+            for train_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training'):
                 # Only save num_table_examples from first batch
-                if train_step == 0 and args.num_table_examples is not None:
-                    experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *train_batch)
-
-                train_batch = (t.to(device) for t in train_batch)
-                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*train_batch)
-                experiment.compute_loss_and_update_metrics(epoch,word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
+                experiment.compute_loss_and_update_metrics(
+                    train_batch, metrics_key='Train', epoch=epoch, is_first_batch=(train_step == 0)
+                )
             
             experiment.model.eval()
             with torch.no_grad():
-                for test_step, test_batch in tqdm.tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Evaluating', leave=False):
-                    # Only save num_table_examples from first batch
-                    if test_step == 0 and args.num_table_examples is not None:
-                        experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *test_batch)
-                    
-                    test_batch = (t.to(device) for t in test_batch)
-                    word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*test_batch)
-                    experiment.compute_loss_and_update_metrics(epoch,word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
+                for test_step, test_batch in tqdm.tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Evaluating'):
+                    experiment.compute_loss_and_update_metrics(
+                        test_batch, metrics_key='Test', epoch=epoch, is_first_batch=(test_step == 0)
+                    )
         
             experiment.model.train()
-            experiment.wb_table.update_wandb_table()
+        
+        # Update table at the end of training.
+        experiment.wb_table.update_wandb_table()
 
         # Given a tiny number of total examples (6), and random seed of 42, these are the determined values in the table
         #    I don't check the word distance or individual loss due to floating point error in checking tensors.

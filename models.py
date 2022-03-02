@@ -127,8 +127,8 @@ class ElmoClassifier(torch.nn.Module):
             average_sent_2 = elmo_sent_2['elmo_representations'][0].mean(dim=1) #B x 1024
 
             u,v = average_sent_1, average_sent_2  
-            assert u.shape == (B,1024)
-            assert v.shape == (B,1024)
+            assert u.shape == (B, 1024)
+            assert v.shape == (B, 1024)
 
             # FROM GLUE baseline: github.com/nyu-mll/GLUE-baselines/blob/b1c82396d960fd9725517089822d15e31b9882f5/src/models.py#L330
             # return torch.cat([s1_enc, s2_enc, torch.abs(s1_enc - s2_enc), s1_enc * s2_enc], 1)

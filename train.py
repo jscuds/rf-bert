@@ -175,8 +175,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
     with open(args_file_path, 'w') as args_file:
         json.dump(config_dict, args_file)
 
-    # train on gpu if availble, set `device` as global variable
-    experiment.model.to(device)
     # load model from disk
     if args.model_weights:
         logging.info('*** loading model %s from path %s', args.model_name, args.model_weights)
@@ -210,13 +208,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
         # anywhere to go.
         assert len(unexpected_keys) == 0
 
-    if args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(experiment.model.parameters(), lr=args.learning_rate)
-    elif args.optimizer == 'sgd':
-        optimizer = torch.optim.SGD(experiment.model.parameters(), lr=args.learning_rate)
-    else:
-        raise ValueError(f'unsupported optimizer {args.optimizer}')
-
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches:
     wandb.watch(experiment.model, log_freq=round(len(train_dataloader) / 10.0))
@@ -228,76 +219,29 @@ def run_training_loop(args: argparse.Namespace) -> str:
     training_step = 0
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
-        for _train_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
-            if args.experiment == 'finetune':
-                if len(train_batch) == 2: # single-sentence classification
-                    sentence, targets = train_batch
-                    sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
-                    preds = experiment.model(sentence)
-                elif len(train_batch) == 3: # sentence-pair classification
-                    sentence1, sentence2, targets = train_batch
-                    # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
-                    sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
-                    targets = targets.to(device)
-                    preds = experiment.model(sentence_stacked)
-                else:
-                    raise ValueError(f'Expected train_batch of length 2 or 3, got {len(train_batch)}')
-                train_loss = experiment.compute_loss_and_update_metrics(preds, targets, 'Train')
-            else:
-
-                # if first batch, log examples for W&B table
-                if _train_step == 0 and args.num_table_examples is not None:
-                    experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *train_batch)
-                # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = train_batch
-                train_batch = (t.to(device) for t in train_batch)
-                word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*train_batch)
-                train_loss = experiment.compute_loss_and_update_metrics(epoch, word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Train')
+        for epoch_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):
+            is_first_batch = (epoch_step == 0)
+            train_loss = experiment.compute_loss_and_update_metrics(
+                train_batch, metrics_key='Train', epoch=epoch, is_first_batch=is_first_batch)
+            experiment.backward(train_loss, epoch=epoch)
             
-            train_loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-
             if (training_step + 1) % log_interval == 0:
                 logger.info(f"Running evaluation at step {training_step} in epoch {epoch+1} (logs_per_epoch = {args.logs_per_epoch})")
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches
                 with torch.no_grad():
-
-                    for _test_step, test_batch in tqdm.tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Evaluating', leave=False):
-                        if args.experiment == 'finetune':
-                            if len(test_batch) == 2: # single-sentence classification
-                                sentence, targets = test_batch
-                                sentence, targets = sentence.to(device), targets.to(device)
-
-                                preds = experiment.model(sentence)
-                            elif len(test_batch) == 3: # sentence-pair classification
-                                sentence1, sentence2, targets = test_batch
-                                # We pass sentence pairs as a tensor of shape (B, 2, ...) instead of a tuple of two tensors.
-                                sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
-                                targets = targets.to(device)
-                                preds = experiment.model(sentence_stacked)
-                            else:
-                                raise ValueError(f'Expected test_batch of length 2 or 3, got {len(test_batch)}')
-                            experiment.compute_loss_and_update_metrics(preds, targets, 'Test')
-                        else:
-
-                            # if first batch, log examples for W&B table
-                            if _test_step == 0 and args.num_table_examples is not None:
-                                experiment.wb_table.get_sample_batch(epoch, experiment.model.training, *test_batch)
-                            # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = test_batch
-                            batch = (t.to(device) for t in test_batch)
-                            word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = experiment.model(*test_batch) 
-                            experiment.compute_loss_and_update_metrics(epoch, word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2, 'Test')
-
+                    for test_batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
+                        experiment.compute_loss_and_update_metrics(
+                            test_batch, metrics_key='Test', epoch=epoch, is_first_batch=is_first_batch)
                 # Compute metrics, log, and reset
-                metrics_dict = experiment.compute_and_reset_metrics(training_step, epoch)
+                metrics_dict = experiment.compute_and_reset_metrics(step=training_step, epoch=epoch)
                 wandb.log(metrics_dict, step=training_step)
+                # Advance learning rate scheduler (if there is one) after validation
+                experiment.step_lr_scheduler(epoch)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
-            
             # End of step, increment counter
             training_step += 1
-
         # End of epoch
         if (epoch+1) % args.epochs_per_model_save == 0:
             checkpoint = {
@@ -321,11 +265,10 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # After training, log example table
     if args.experiment == 'retrofit' and args.num_table_examples is not None:
         experiment.wb_table.update_wandb_table()
-        wandb.log({'sampled_examples_table':experiment.wb_table.final_table}) 
+        wandb.log({'sampled_examples_table': experiment.wb_table.final_table}) 
 
     # Save final model
-    final_save_path = os.path.join(
-        model_folder, f'final.pth')   
+    final_save_path = os.path.join(model_folder, 'final.pth')   
     torch.save({ 'model': experiment.model.state_dict() }, final_save_path)
     logging.info('Final model saved to %s', final_save_path)
 

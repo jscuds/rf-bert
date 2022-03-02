@@ -106,4 +106,5 @@ def get_lr(optimizer: torch.optim.Optimizer) -> float:
 
 red_text = lambda x: termcolor.colored(str(x), 'red')
 blue_text = lambda x: termcolor.colored(str(x), 'blue')
+yellow_text = lambda x: termcolor.colored(str(x), 'yellow')
 green_text = lambda x: termcolor.colored(str(x), 'green')

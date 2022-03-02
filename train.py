@@ -160,11 +160,13 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Log to a file and stdout
     Path("logs/").mkdir(exist_ok=True)
     logging.basicConfig(
+        force=True,
         level=logging.INFO,
         handlers=[
             logging.FileHandler(f'logs/{exp_name}.log'),
             logging.StreamHandler()
-        ])
+        ]
+    )
 
     # Create folder for model saves (and parent models/ folder, if needed)
     model_folder = f"models/{exp_name}/"

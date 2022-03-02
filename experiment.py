@@ -15,7 +15,7 @@ from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
 from tablelog import TableLog
 from utils import (
-    TensorRunningAverages, log_wandb_histogram, blue_text, get_lr
+    TensorRunningAverages, log_wandb_histogram, blue_text, yellow_text, get_lr
 )
 
 
@@ -79,7 +79,8 @@ class Experiment(abc.ABC):
         for name in sorted(self.metric_averages.keys()):
             val = self.metric_averages.get(name)
             all_metrics_dict[name] = val
-            logger.info(f'\t {blue_text(name)} = {blue_text(val)}')
+            val_str = f'{val:.4f}'
+            logger.info(f'\t{yellow_text(name)} = {blue_text(val_str)}')
         # Clear all metric averages and return the averages
         self.metric_averages.clear_all()
 
@@ -91,7 +92,9 @@ class Experiment(abc.ABC):
             metric_dict = metric.compute()
             # Print metrics and add to list of total metrics.
             for name, val in metric_dict.items():
-                logger.info('\t%s = %f', name, val)
+                val_str = f'{val:.4f}'
+                logger.info(f'\t{yellow_text(name)} = {blue_text(val_str)}')
+
             all_metrics_dict.update(metric_dict)
         
         # Also log learning rate.
@@ -361,13 +364,14 @@ class FinetuneExperiment(Experiment):
         # TODO: argparse for scheduler hyperparams.
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5,
-            patience=2, min_lr=1e-6
+            patience=8, min_lr=1e-6
         )
 
     def step_lr_scheduler(self):
         """Advances LR scheduler if there is one."""
         test_loss = self.metric_averages.get('Test/Loss')
-        logging.info(f'[step_lr_scheduler] Advancing scheduler {type(self.scheduler)} with test_loss = {test_loss:.4f}')
+        sched_type = type(self.scheduler).__name__
+        logging.info(f'[step_lr_scheduler] Advancing scheduler {sched_type} with test_loss = {test_loss:.4f}')
         self.scheduler.step(test_loss)
         logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     

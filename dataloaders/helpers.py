@@ -1,6 +1,8 @@
 from typing import Callable, List, Tuple
 
 import collections
+import os
+
 import datasets
 import numpy as np
 import torch
@@ -9,6 +11,9 @@ from allennlp.modules.elmo import batch_to_ids
 from mosestokenizer import MosesTokenizer
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SubsetRandomSampler
+
+
+num_cpus = len(os.sched_getaffinity(0)) # ask the OS how many cpus we have (stackoverflow.com/questions/1006289)
 
 def train_test_split(dataset: Dataset, batch_size: int, shuffle: bool = True, 
                      drop_last: bool = False, train_split: float = 0.8) -> Tuple[DataLoader, DataLoader]:
@@ -63,8 +68,7 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
 
     # Caching sometimes causes weird issues with .map(), if you see that then
     # add the load_from_cache_file=False argument below.
-    dataset = dataset.map(text_to_ids, batched=False, load_from_cache_file=False)
-    return dataset
+    return dataset.map(text_to_ids, batched=False)
 
 
 def dataloader_from_dataset(
@@ -88,7 +92,8 @@ def dataloader_from_dataset(
         return tuple(torch.stack(d[k]) for k in text_columns) + tuple(torch.stack(d[k]).float() for k in label_columns)
     return DataLoader(dataset,
         batch_size=batch_size, collate_fn=collate_fn,
-        shuffle=True, drop_last=drop_last, pin_memory=True
+        shuffle=shuffle, drop_last=drop_last, pin_memory=torch.cuda.is_available(),
+        num_workers=min(8, num_cpus)
     )
 
 
@@ -131,7 +136,11 @@ def load_qqp(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(dataset=dataset, text_columns=['question1', 'question2'], max_length=max_length)
+    dataset = prepare_dataset_with_elmo_tokenizer(
+        dataset=dataset,
+        text_columns=['question1', 'question2'],
+        max_length=max_length
+    )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
     print('Loading rotten tomatoes dataset with', num_examples, 'examples')

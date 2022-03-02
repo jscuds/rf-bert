@@ -191,7 +191,6 @@ class ElmoRetrofit(torch.nn.Module):
         """
 
         batch_size = pos_sent_1.shape[0] # batch_size because drop_last = False
-
         
         assert pos_sent_1.shape == pos_sent_2.shape == (batch_size,40,50)
         assert neg_sent_1.shape == neg_sent_2.shape == (batch_size,40,50)

@@ -80,7 +80,7 @@ class Experiment(abc.ABC):
             val = self.metric_averages.get(name)
             all_metrics_dict[name] = val
             val_str = f'{val:.4f}'
-            logger.info(f'\t{yellow_text(name)} = {blue_text(val_str)}')
+            logger.info(f'{yellow_text(name)} = {blue_text(val_str)}')
         # Clear all metric averages and return the averages
         self.metric_averages.clear_all()
 
@@ -93,7 +93,7 @@ class Experiment(abc.ABC):
             # Print metrics and add to list of total metrics.
             for name, val in metric_dict.items():
                 val_str = f'{val:.4f}'
-                logger.info(f'\t{yellow_text(name)} = {blue_text(val_str)}')
+                logger.info(f'{yellow_text(name)} = {blue_text(val_str)}')
 
             all_metrics_dict.update(metric_dict)
         
@@ -116,6 +116,7 @@ class Experiment(abc.ABC):
         train_loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
+
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
@@ -327,7 +328,6 @@ class RetrofitExperiment(Experiment):
         return loss
 
 
-
 class FinetuneExperiment(Experiment):
     """Configures experiments for fine-tuning models, typically for
     classification-based tasks like those from the GLUE benchmark.
@@ -346,7 +346,7 @@ class FinetuneExperiment(Experiment):
 
         self.model = (
             ElmoClassifier(
-                num_output_representations = 1, 
+                num_output_representations=1, 
                 requires_grad=False, 
                 dropout=0,
                 sentence_pair=self.is_sentence_pair,

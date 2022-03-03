@@ -70,7 +70,7 @@ class ElmoClassifier(torch.nn.Module):
                  m_transform_requires_grad: bool = True):
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
-                         num_output_representations = num_output_representations,
+                         num_output_representations=num_output_representations,
                          requires_grad=requires_grad, dropout=dropout)
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation

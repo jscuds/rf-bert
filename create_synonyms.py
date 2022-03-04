@@ -69,7 +69,8 @@ elif NUM_EXAMPLES is None:
 
 # TODO / IDEAS:
 # 0. Make this cleaner if it's used.
-# 1. Limit the full synonym list to just reference other overlap tokens already encompassed in the ParaphraseDataset.
+# 1. REMOVE DIGITS
+# 2. Limit the full synonym list to just reference other overlap tokens already encompassed in the ParaphraseDataset.
 #        Ex. bigger/larger instead of _any_ synonymous word in WordNet
-# 2. Remove hyphens '-'
-# 3. *REACH* ensure synonyms are used in the same part of speech
+# 3. Remove hyphens '-'
+# 4. *REACH* ensure synonyms are used in the same part of speech

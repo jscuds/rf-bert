@@ -69,7 +69,7 @@ class TestQuoraBert:
 
 class TestQuoraElmo:
     quora = ParaphraseDatasetElmo(para_dataset = 'quora', model_name = 'elmo', num_examples = 20000, 
-                    max_length = 40, stop_words_file = './stop_words_en.txt', r1 =0.5, seed = 42) # all of these are seed dependent
+                    max_length = 40, stop_words_file = './stop_words_en.txt', r1 =0.5, seed = 42, use_synonyms= False) # all of these are seed dependent
 
     def test_length(self):
         assert len(self.quora) == 16881

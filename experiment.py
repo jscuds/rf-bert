@@ -96,7 +96,7 @@ class RetrofitExperiment(Experiment):
             ElmoRetrofit(
                 num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
-                dropout=0,
+                elmo_dropout=args.elmo_dropout,
             )
         )
         self.rf_lambda = self.args.rf_lambda
@@ -117,7 +117,7 @@ class RetrofitExperiment(Experiment):
             'quora',
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed
+            r1=0.5, seed=self.args.random_seed, use_synonyms=self.args.use_synonyms
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
@@ -294,10 +294,11 @@ class FinetuneExperiment(Experiment):
             ElmoClassifier(
                 num_output_representations = 1, 
                 requires_grad=False, 
-                dropout=0,
+                ft_dropout=args.ft_dropout,
                 sentence_pair=(args.model_name == "elmo_sentence_pair"),
                 m_transform=args.finetune_rf,
                 m_transform_requires_grad=False,
+                elmo_dropout=args.elmo_dropout
             )
         )
         self._loss_fn = torch.nn.BCELoss()

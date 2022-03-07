@@ -87,11 +87,11 @@ class ElmoClassifier(torch.nn.Module):
         linear_input_size = (self.elmo_hidden_size*3 + 1) if sentence_pair else (self.elmo_hidden_size)
 
         # https://github.com/nyu-mll/GLUE-baselines/blob/b1c82396d960fd9725517089822d15e31b9882f5/src/models.py#L183
-        dropout = 0.2
+        dropout = 0.5
         self.classifier = torch.nn.Sequential(
             torch.nn.Dropout(p=dropout),
             torch.nn.Linear(in_features=linear_input_size, out_features=linear_hidden_dim),
-            torch.nn.Tanh(),
+            torch.nn.ReLU(),
             torch.nn.Dropout(p=dropout),
             torch.nn.Linear(in_features=linear_hidden_dim, out_features=1),
             torch.nn.Sigmoid()

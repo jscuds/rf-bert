@@ -2,6 +2,7 @@ allennlp
 datasets
 mosestokenizer
 nltk
+termcolor
 torch
 transformers
 wandb

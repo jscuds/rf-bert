@@ -1,0 +1,31 @@
+program: train.py
+command:
+  - ${env}
+  - python
+  - ${program}
+  - "finetune"
+  - ${args}
+  - "--finetune_rf"
+method: grid
+metric:
+  name: "Test/Accuracy"
+  goal: maximize
+parameters:
+  learning_rate: 
+    value: 5e-3
+  optimizer:
+    value: "adam"
+  model_name:
+    value: "elmo_single_sentence"
+  dataset_name:
+    values: ["rotten_tomatoes", "sst2"]
+  epochs:
+    value: 10
+  batch_size:
+    value: 256
+  logs_per_epoch:
+    value: 1
+  epochs_per_model_save:
+    value: 2
+  model_weights:
+    values: ["models/retrofit_elmo_2022-02-17-0954/0_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/1_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/2_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/3_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/4_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/5_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/6_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/7_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/8_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/9_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/11_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/13_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/15_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/17_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/19_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/22_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/25_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/28_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/31_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/34_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/37_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/40_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/43_epochs.pth", "models/retrofit_elmo_2022-02-17-0954/46_epochs.pth"]

@@ -14,15 +14,19 @@ from dataloaders.helpers import (
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
 from tablelog import TableLog
-from utils import TensorRunningAverages, log_wandb_histogram
+from utils import (
+    TensorRunningAverages, log_wandb_histogram, blue_text, yellow_text, get_lr
+)
 
-
-logger = logging.getLogger(__name__)
 
 Metric = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
+logger = logging.getLogger(__name__)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class Experiment(abc.ABC):
     model: torch.nn.Module
+    optimizer: torch.optim.Optimizer
     dataset: Dataset
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
@@ -38,6 +42,23 @@ class Experiment(abc.ABC):
         metrics stored in `self.metric_averages`.
         """
         raise NotImplementedError()
+    
+    def create_lr_scheduler(self, args: argparse.Namespace, optimizer: torch.optim.Optimizer):
+        """Creates a learning rate scheduler if there is one."""
+        pass
+
+    def create_optimizer_and_lr_scheduler(self, args: argparse.Namespace):
+        """Creates `self.optimizer` from args. Must be called before training starts,
+        but after `self.model` exists.
+        """
+        if args.optimizer == 'adam':
+            optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
+        elif args.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(self.model.parameters(), lr=args.learning_rate)
+        else:
+            raise ValueError(f'unsupported optimizer {args.optimizer}')
+        self.optimizer = optimizer
+        self.create_lr_scheduler(args, optimizer)
     
     def compute_and_reset_metrics(self, step: int, epoch: int) -> Dict[str, float]:
         """Computes all metrics that have running averages stored in 
@@ -58,8 +79,8 @@ class Experiment(abc.ABC):
         for name in sorted(self.metric_averages.keys()):
             val = self.metric_averages.get(name)
             all_metrics_dict[name] = val
-            # todo(jxm): use `logging` package here
-            logger.info('\t%s = %f', name, val)
+            val_str = f'{val:.4f}'
+            logger.info(f'{yellow_text(name)} = {blue_text(val_str)}')
         # Clear all metric averages and return the averages
         self.metric_averages.clear_all()
 
@@ -71,8 +92,13 @@ class Experiment(abc.ABC):
             metric_dict = metric.compute()
             # Print metrics and add to list of total metrics.
             for name, val in metric_dict.items():
-                logger.info('\t%s = %f', name, val)
+                val_str = f'{val:.4f}'
+                logger.info(f'{yellow_text(name)} = {blue_text(val_str)}')
+
             all_metrics_dict.update(metric_dict)
+        
+        # Also log learning rate.
+        all_metrics_dict['learning_rate'] = get_lr(self.optimizer)
 
         return all_metrics_dict
     
@@ -80,11 +106,22 @@ class Experiment(abc.ABC):
     def get_dataloaders() -> Tuple[DataLoader, DataLoader]:
         """Returns train and test dataloaders."""
         raise NotImplementedError()
+    
+    def step_lr_scheduler(self):
+        """Advances LR scheduler if there is one."""
+        pass
+    
+    def backward(self, train_loss: torch.Tensor, epoch: int):
+        """Performs backward pass and advances optimizer."""
+        train_loss.backward()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
 
 class RetrofitExperiment(Experiment):
     """Configures experiments with retrofitting loss."""
     model: ElmoRetrofit
+    optimizer: torch.optim.Optimizer
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
     wb_table: TableLog
@@ -97,8 +134,9 @@ class RetrofitExperiment(Experiment):
                 num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
                 elmo_dropout=args.elmo_dropout,
-            )
+            ).to(device)
         )
+        self.create_optimizer_and_lr_scheduler(args)
         self.rf_lambda = self.args.rf_lambda
         self.rf_gamma = self.args.rf_gamma
         self.metric_averages = TensorRunningAverages()
@@ -230,8 +268,10 @@ class RetrofitExperiment(Experiment):
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
         return torch.norm(I - torch.matmul(M.T, M), p='fro')
 
-    def compute_loss_and_update_metrics(self, epoch: int, word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
-                     word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor, metrics_key: str) -> torch.Tensor:
+    def compute_loss_and_update_metrics(self,
+            batch: Tuple[torch.Tensor], metrics_key: str,
+            epoch: int, is_first_batch: bool
+        ) -> torch.Tensor:
         """Retrofitting loss from Retrofitting Contextualized Word Embeddings with Paraphrases https://arxiv.org/pdf/1909.09700.pdf 
     
         Loss is defined in Section 3.2 of the paper. emb_dim for ELMO is 1024.
@@ -241,18 +281,30 @@ class RetrofitExperiment(Experiment):
         L = L_h + lambda * L_o
 
         Args:
-            word_rep_pos_1 (float torch.Tensor): representation of word 1 in positive pair, shape [B, emb_dim]
-            word_rep_pos_2 (float torch.Tensor): representation of word 2 in positive pair, shape [B, emb_dim]
-            word_rep_neg_1 (float torch.Tensor): representation of word 1 in negative pair, shape [B, emb_dim]
-            word_rep_neg_2 (float torch.Tensor): representation of word 2 in negative pair, shape [B, emb_dim]
+            batch (Tuple[float torch.Tensor]): batch of train or test examples
             metric_key (str): prefix for metric-logging, like 'Train'
+            epoch (int): current training epoch
+            is_first_batch (bool): whether this is the first batch of the train or test loop
+
         Returns:
             loss (float torch.Tensor): loss for batch, a scalar
         """
-        hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = self.retrofit_hinge_loss(
-            word_rep_pos_1, word_rep_pos_2,
-            word_rep_neg_1, word_rep_neg_2,
-            self.rf_gamma, epoch
+        # TODO what to do without _train_step?
+        # if first batch, log examples for W&B table
+        batch = tuple(t.to(device) for t in batch)
+        if is_first_batch and self.args.num_table_examples is not None:
+            self.wb_table.get_sample_batch(epoch, self.model.training, *batch)
+        # sent1, sent2, nsent1, nsent2, token1, token2, ntoken1, ntoken2 = batch
+        word_rep_pos_1, word_rep_pos_2, word_rep_neg_1, word_rep_neg_2 = (
+            self.model(*batch)
+        )
+        
+        hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = (
+            self.retrofit_hinge_loss(
+                word_rep_pos_1, word_rep_pos_2,
+                word_rep_neg_1, word_rep_neg_2,
+                self.rf_gamma, epoch
+            )
         )
         orth_loss = self.orthogonalization_loss(self.M)
         loss = hinge_loss + self.rf_lambda * orth_loss
@@ -276,34 +328,53 @@ class RetrofitExperiment(Experiment):
         return loss
 
 
-
 class FinetuneExperiment(Experiment):
     """Configures experiments for fine-tuning models, typically for
     classification-based tasks like those from the GLUE benchmark.
     """
     model: ElmoClassifier
+    optimizer: torch.optim.Optimizer
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
+
+    is_sentence_pair: bool
 
     def __init__(self, args: argparse.Namespace):
         assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"}
         self.args = args
+        self.is_sentence_pair = (args.model_name == "elmo_sentence_pair")
 
-        # ELMO should never be frozen during finetuning.
         self.model = (
             ElmoClassifier(
-                num_output_representations = 1, 
+                num_output_representations=1, 
                 requires_grad=False, 
                 ft_dropout=args.ft_dropout,
-                sentence_pair=(args.model_name == "elmo_sentence_pair"),
+                sentence_pair=self.is_sentence_pair,
                 m_transform=args.finetune_rf,
                 m_transform_requires_grad=False,
                 elmo_dropout=args.elmo_dropout
             )
-        )
+        ).to(device)
+        self.create_optimizer_and_lr_scheduler(args)
         self._loss_fn = torch.nn.BCELoss()
         self.metric_averages = TensorRunningAverages()
         self.metrics = [Accuracy(), PrecisionRecallF1()]
+    
+    def create_lr_scheduler(self, args: argparse.Namespace, optimizer: torch.optim.Optimizer):
+        """Creates a learning rate scheduler if there is one."""
+        # TODO: argparse for scheduler hyperparams.
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=0.5,
+            patience=8, min_lr=1e-6
+        )
+
+    def step_lr_scheduler(self):
+        """Advances LR scheduler if there is one."""
+        test_loss = self.metric_averages.get('Test/Loss')
+        sched_type = type(self.scheduler).__name__
+        logging.info(f'[step_lr_scheduler] Advancing scheduler {sched_type} with test_loss = {test_loss:.4f}')
+        self.scheduler.step(test_loss)
+        logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
@@ -333,16 +404,38 @@ class FinetuneExperiment(Experiment):
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.dataset_name}')
         return train_dataloader, test_dataloader
     
-    def compute_loss_and_update_metrics(self, preds: torch.Tensor, targets: torch.Tensor, metrics_key: str) -> torch.Tensor:
+    def compute_loss_and_update_metrics(self,
+        batch: Tuple[torch.Tensor], metrics_key: str,
+        epoch: int, is_first_batch: bool
+        ) -> torch.Tensor:
         """Computes loss. Updates running metric computations stored in `self.metric_averages`.
 
         Args:
-            preds (torch.Tensor): y_pred to use for loss computation
-            targets (torch.Tensor): y_true to use for loss computation.
+            batch (Tuple[torch.Tensor]):
+                preds (torch.Tensor): y_pred to use for loss computation
+                targets (torch.Tensor): y_true to use for loss computation.
             metric_key (str): prefix for storing metric, probably looks like 'Test' or 'Train'
+            epoch (int): current training epoch
+            is_first_batch (bool): whether this is the first batch of the train or test loop
 
         Returns loss as float torch.Tensor of shape ().
         """
+        if len(batch) == 2: # single-sentence classification
+            assert not self.is_sentence_pair
+            sentence, targets = batch
+            sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+            preds = self.model(sentence)
+        elif len(batch) == 3: # sentence-pair classification
+            assert self.is_sentence_pair
+            sentence1, sentence2, targets = batch
+            # We pass sentence pairs to the model as a tensor of shape (B, 2, ...)
+            # instead of a tuple of two tensors.
+            sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
+            targets = targets.to(device)
+            preds = self.model(sentence_stacked)
+        else:
+            raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+
         assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())

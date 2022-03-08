@@ -63,6 +63,10 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
+    parser.add_argument('--elmo_dropout', type=float, default=0,
+        help='dropout probability (0,1] for elmo embeddings model')
+    parser.add_argument('--ft_dropout', type=float, default=0.2,
+        help='dropout probability (0,1] for classifier model')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -87,7 +91,6 @@ def get_argparser() -> argparse.ArgumentParser:
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
-    # TODO: additional model args? dropout...
     
     return parser
 

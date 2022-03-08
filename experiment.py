@@ -133,7 +133,7 @@ class RetrofitExperiment(Experiment):
             ElmoRetrofit(
                 num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
-                dropout=0,
+                elmo_dropout=args.elmo_dropout,
             ).to(device)
         )
         self.create_optimizer_and_lr_scheduler(args)
@@ -348,10 +348,11 @@ class FinetuneExperiment(Experiment):
             ElmoClassifier(
                 num_output_representations=1, 
                 requires_grad=False, 
-                dropout=0,
+                ft_dropout=args.ft_dropout,
                 sentence_pair=self.is_sentence_pair,
                 m_transform=args.finetune_rf,
                 m_transform_requires_grad=False,
+                elmo_dropout=args.elmo_dropout
             )
         ).to(device)
         self.create_optimizer_and_lr_scheduler(args)

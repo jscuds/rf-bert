@@ -420,147 +420,160 @@ class ParaphraseDatasetElmo(Dataset):
         Loads relevant paraphrase dataset based on argument passed to constructor and creates attributes for model training.
         """
 
-        # load quora from HuggingFace
+        # load quora or mrpc from HuggingFace
         if self.para_dataset == 'quora':
-            quora = datasets.load_dataset(self.para_dataset)
+            dataset = datasets.load_dataset('quora')
+        elif self.para_dataset == 'mrpc':
+            dataset = datasets.load_dataset('glue','mrpc')
             
-            quora_shuffled = quora.shuffle(seed=self.seed)
-            count = 0
+        dataset_shuffled = dataset.shuffle(seed=self.seed)
+        count = 0
 
-            bad_count = 0              #js added for testing
-            self.sentence_id_pair_list = [] #js added for testing
-            label_list = []            #js added for testing
+        bad_count = 0              #js added for testing
+        self.sentence_id_pair_list = [] #js added for testing
+        label_list = []            #js added for testing
 
-            # TODO: Tokenize things beforehand!
-            for pair in tqdm.tqdm(quora_shuffled['train'], desc='Processing quora paraphrases'):
-                #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
-                if (self.num_examples is not None) and count >= self.num_examples:
-                    break
+        # TODO: Tokenize things beforehand!
+        for pair in tqdm.tqdm(dataset_shuffled['train'], desc=f'Processing {self.para_dataset} paraphrases'):
+            #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
+            if (self.num_examples is not None) and count >= self.num_examples:
+                break
+            if self.para_dataset == 'quora':
                 label = pair['is_duplicate']
                 s1_id = pair['questions']['id'][0]
                 s2_id = pair['questions']['id'][1]
                 s1 = pair['questions']['text'][0]
                 s2 = pair['questions']['text'][1]
-                # TODO: better way? .map() functionality of quora dataset object? map bad words to [UNK]?
-                exist_bad_word = False
-                for i in self.bad_words:
-                    if (i in s1 or i in s2):
-                        exist_bad_word = True
 
-                if exist_bad_word: 
-                    bad_count += 1  #js added for testing
-                    continue # skip pair if it contains element from self.bad_words
+            elif self.para_dataset == 'mrpc':
+                label = pair['label']
+                # mrpc dataset index is for the sentence pair, so I'm creating new indices for each sentence 
+                # by multiplying pair index *10 + 0 for s1  and + 1 for s2
+                s1_id = pair['idx']*10
+                s2_id = pair['idx']*10 + 1
+                s1 = pair['sentence1']
+                s2 = pair['sentence2']
 
-                # Look for newlines (they will break the Moses tokenizer).
-                if '\n' in s1:
-                    logger.warn(f'Replacing newlines in s1: "{s1}"')
-                    s1 = s1.replace('\n', ' ')
-                if '\n' in s2:
-                    logger.warn(f'Replacing newlines in s2: "{s2}"')
-                    s2 = s2.replace('\n', ' ')
+            # TODO: better way? .map() functionality of quora/mrpc dataset object? map bad words to [UNK]?
+            exist_bad_word = False
+            for i in self.bad_words:
+                if (i in s1 or i in s2):
+                    exist_bad_word = True
 
-                #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
-                self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
-                label_list.append(label)                    #js added
-                #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
+            if exist_bad_word: 
+                bad_count += 1  #js added for testing
+                continue # skip pair if it contains element from self.bad_words
+
+            # Look for newlines (they will break the Moses tokenizer).
+            if '\n' in s1:
+                logger.warn(f'Replacing newlines in s1: "{s1}"')
+                s1 = s1.replace('\n', ' ')
+            if '\n' in s2:
+                logger.warn(f'Replacing newlines in s2: "{s2}"')
+                s2 = s2.replace('\n', ' ')
+
+            #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
+            self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
+            label_list.append(label)                    #js added
+            #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
 
 
-                #elmo_change using batch_to_ids and tokenizer
-                s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq_length, 50)
-                s2_interim_tokenized = batch_to_ids([self.tokenizer(s2)]) # shape: (1,seq_length, 50) 
+            #elmo_change using batch_to_ids and tokenizer
+            s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq_length, 50)
+            s2_interim_tokenized = batch_to_ids([self.tokenizer(s2)]) # shape: (1,seq_length, 50) 
 
-                # Skip if one of the inputs has no tokens (this is a real issue).
-                if (not s1_interim_tokenized.numel()) or (not s2_interim_tokenized.numel()):
-                    logger.warn(f'Skipping pair with empty question: {pair}')
+            # Skip if one of the inputs has no tokens (this is a real issue).
+            if (not s1_interim_tokenized.numel()) or (not s2_interim_tokenized.numel()):
+                logger.warn(f'Skipping pair with empty question: {pair}')
+                continue
+            
+
+            # add padding to self.max_length && truncate if number of tokens > self.max_length
+            s1_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64) # shape: (1, self.max_length, 50 for ELMo character encoding)
+            s2_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64)
+
+            # Truncate to self.max_length
+            s1_tokenized[:,:s1_interim_tokenized.shape[1],:] = torch.clone(s1_interim_tokenized[:,:self.max_length,:])
+            s2_tokenized[:,:s2_interim_tokenized.shape[1],:] = torch.clone(s2_interim_tokenized[:,:self.max_length,:])     
+            
+            # Convert sentences to tuple of tuples for dictionaries
+            #   tuple of tuples: len(outer_tuple) = self.max_length; len(outer_tuple[<any index>]) = 50
+            s1_tuple = self._tensor_to_token_tuples(s1_tokenized)
+            s2_tuple = self._tensor_to_token_tuples(s2_tokenized)
+
+            #Shi uses a list for tokenized sentences; where the index is equivalent to the updated id; 
+            #   js: I'm going to just use a dictionary
+            
+            #if not s1_tokenized in sent_to_id: shouldn't be necessary due to id_to_sent.update() functionality
+            #js NOTE have to use Tuples because tensors aren't hashable
+            self._id_to_sent.update({s1_id : s1_tuple})
+            self._id_to_sent.update({s2_id : s2_tuple})
+            self._sent_to_id.update({s1_tuple : s1_id})
+            self._sent_to_id.update({s2_tuple : s2_id})
+            
+            #TODO: ELMO_CHANGE: ensure overlap returns what you expect
+            total_index_pairs = self._overlap(s1_tuple, s2_tuple)
+            
+            #js if `is_duplicate`== True; append both combinations s1&s2 ++ s2&s1 to `self.paraphrases`
+            if label:
+                self._paraphrase_sets.add((s1_id, s2_id))
+                self._paraphrase_sets.add((s2_id, s1_id))
+                for p in total_index_pairs:             #js for every pair of overlap words:
+                    intersection_tuple = (s1_id,s2_id,p[0],p[1]) #js (s1_idx, s2_idx, s1_overlap_word_index, s2_overlap_word_idx) **SO THERE COULD BE MULTIPLE TUPLES STARTING WITH  `s1_idx, s2_idx`** if they have multiple overlapping words
+                    self._para_tuples.append(intersection_tuple) #js a list of tuples in the format from the line above
+            else: #js this from NON-PARAPHRASE questions
+                for p in total_index_pairs:
+                    intersection_tuple = (s1_id, s2_id, p[0], p[1])
+                    self._neg_tuples.append(intersection_tuple)
+
+                    #js NOTE I think w1 == w2; except if/when synonyms are involved
+                    w1 = self._tensor_to_token_tuples(s1_tokenized[:,p[0],:]) # original w1 & w2 shape: [1,1,50]
+                    w2 = self._tensor_to_token_tuples(s2_tokenized[:,p[1],:]) # new w1 & w2 len = 50
+
+
+                    #js filter out stopwords from negative sentences
+                    #  stopwords are filtered out of pos sentences in self.overlap_()
+                    if w1 in self.stop_words_set or w2 in self.stop_words_set:
+                        continue                                               
+
+                    self._token_pair_to_neg_tuples.setdefault((w1, w2), set()).add(len(self._neg_tuples)-1)
+                    #js ^ dict((token_id\, token_id) : set([neg_tuple_id, ...]))
+                    #   `.setdefault()` adds the (w1,w2) key if it's not present and if the (w1,w2) key _is_ present, `.setdefault()`
+                    #   will add the new index of the neg_tuple id to the set of dictionary values
+                    #   EX. a = {(52, 53): {4}}
+                    #       a.setdefault((20,21),set()).add(3);  a == {(20, 21): {3}, (52, 53): {4}}
+                    #       a.setdefault((20,21),set()).add(5);  a == {(20, 21): {3, 5}, (52, 53): {4}}            
+
+            # update self._token_to_sents
+            # js self._token_to_sents is a dict {token_tuple: {(sent_id, index of token corresponding to token_tuple)}}  
+            #   *NOTE* `index` is the index of the word in the tokenized sentence (`s1_tokenized`)
+
+            for index, token_tuple in enumerate(s1_tuple):
+                if token_tuple in self.stop_words_set:
                     continue
-                
+                sid_index = (s1_id, index)
+                self._token_to_sents.setdefault(token_tuple, set()).add(sid_index) 
+            for index, token_tuple in enumerate(s2_tuple):
+                if token_tuple in self.stop_words_set:
+                    continue
+                sid_index = (s2_id, index)
+                self._token_to_sents.setdefault(token_tuple, set()).add(sid_index)                              
 
-                # add padding to self.max_length && truncate if number of tokens > self.max_length
-                s1_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64) # shape: (1, self.max_length, 50 for ELMo character encoding)
-                s2_tokenized = torch.zeros(1, self.max_length, 50, dtype=torch.int64)
+            count += 1  # NOTE: count should be incremented here to get correct num_examples
 
-                # Truncate to self.max_length
-                s1_tokenized[:,:s1_interim_tokenized.shape[1],:] = torch.clone(s1_interim_tokenized[:,:self.max_length,:])
-                s2_tokenized[:,:s2_interim_tokenized.shape[1],:] = torch.clone(s2_interim_tokenized[:,:self.max_length,:])     
-                
-                # Convert sentences to tuple of tuples for dictionaries
-                #   tuple of tuples: len(outer_tuple) = self.max_length; len(outer_tuple[<any index>]) = 50
-                s1_tuple = self._tensor_to_token_tuples(s1_tokenized)
-                s2_tuple = self._tensor_to_token_tuples(s2_tokenized)
+        #### PRINT STATEMENTS FOR TESTING ####
+        #logger.info(f'Total time: {(time.time() - t0):.2f} seconds')
+        logger.info('\n#### PRINT STATEMENTS FOR TESTING ####')
+        logger.info(f'Total pairs of questions: {len(self.sentence_id_pair_list)}')
+        logger.info(f'`count` is {count}, should be {self.num_examples}')
+        logger.info(f'`bad_count` is {bad_count}')
+        logger.info(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(self.sentence_id_pair_list)*100:.2f}% of total')
+        logger.info(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(self.sentence_id_pair_list)*100:.2f}% of total')
+        logger.info('#### PRINT STATEMENTS FOR TESTING ####\n')
+        #### PRINT STATEMENTS FOR TESTING ####
 
-                #Shi uses a list for tokenized sentences; where the index is equivalent to the updated id; 
-                #   js: I'm going to just use a dictionary
-                
-                #if not s1_tokenized in sent_to_id: shouldn't be necessary due to id_to_sent.update() functionality
-                #js NOTE have to use Tuples because tensors aren't hashable
-                self._id_to_sent.update({s1_id : s1_tuple})
-                self._id_to_sent.update({s2_id : s2_tuple})
-                self._sent_to_id.update({s1_tuple : s1_id})
-                self._sent_to_id.update({s2_tuple : s2_id})
-                
-                #TODO: ELMO_CHANGE: ensure overlap returns what you expect
-                total_index_pairs = self._overlap(s1_tuple, s2_tuple)
-                
-                #js if `is_duplicate`== True; append both combinations s1&s2 ++ s2&s1 to `self.paraphrases`
-                if label:
-                    self._paraphrase_sets.add((s1_id, s2_id))
-                    self._paraphrase_sets.add((s2_id, s1_id))
-                    for p in total_index_pairs:             #js for every pair of overlap words:
-                        intersection_tuple = (s1_id,s2_id,p[0],p[1]) #js (s1_idx, s2_idx, s1_overlap_word_index, s2_overlap_word_idx) **SO THERE COULD BE MULTIPLE TUPLES STARTING WITH  `s1_idx, s2_idx`** if they have multiple overlapping words
-                        self._para_tuples.append(intersection_tuple) #js a list of tuples in the format from the line above
-                else: #js this from NON-PARAPHRASE questions
-                    for p in total_index_pairs:
-                        intersection_tuple = (s1_id, s2_id, p[0], p[1])
-                        self._neg_tuples.append(intersection_tuple)
-
-                        #js NOTE I think w1 == w2; except if/when synonyms are involved
-                        w1 = self._tensor_to_token_tuples(s1_tokenized[:,p[0],:]) # original w1 & w2 shape: [1,1,50]
-                        w2 = self._tensor_to_token_tuples(s2_tokenized[:,p[1],:]) # new w1 & w2 len = 50
-
-
-                        #js filter out stopwords from negative sentences
-                        #  stopwords are filtered out of pos sentences in self.overlap_()
-                        if w1 in self.stop_words_set or w2 in self.stop_words_set:
-                            continue                                               
-
-                        self._token_pair_to_neg_tuples.setdefault((w1, w2), set()).add(len(self._neg_tuples)-1)
-                        #js ^ dict((token_id\, token_id) : set([neg_tuple_id, ...]))
-                        #   `.setdefault()` adds the (w1,w2) key if it's not present and if the (w1,w2) key _is_ present, `.setdefault()`
-                        #   will add the new index of the neg_tuple id to the set of dictionary values
-                        #   EX. a = {(52, 53): {4}}
-                        #       a.setdefault((20,21),set()).add(3);  a == {(20, 21): {3}, (52, 53): {4}}
-                        #       a.setdefault((20,21),set()).add(5);  a == {(20, 21): {3, 5}, (52, 53): {4}}            
-
-                # update self._token_to_sents
-                # js self._token_to_sents is a dict {token_tuple: {(sent_id, index of token corresponding to token_tuple)}}  
-                #   *NOTE* `index` is the index of the word in the tokenized sentence (`s1_tokenized`)
-
-                for index, token_tuple in enumerate(s1_tuple):
-                    if token_tuple in self.stop_words_set:
-                        continue
-                    sid_index = (s1_id, index)
-                    self._token_to_sents.setdefault(token_tuple, set()).add(sid_index) 
-                for index, token_tuple in enumerate(s2_tuple):
-                    if token_tuple in self.stop_words_set:
-                        continue
-                    sid_index = (s2_id, index)
-                    self._token_to_sents.setdefault(token_tuple, set()).add(sid_index)                              
-
-                count += 1  # NOTE: count should be incremented here to get correct num_examples
-
-            #### PRINT STATEMENTS FOR TESTING ####
-            #logger.info(f'Total time: {(time.time() - t0):.2f} seconds')
-            logger.info('\n#### PRINT STATEMENTS FOR TESTING ####')
-            logger.info(f'Total pairs of questions: {len(self.sentence_id_pair_list)}')
-            logger.info(f'`count` is {count}, should be {self.num_examples}')
-            logger.info(f'`bad_count` is {bad_count}')
-            logger.info(f'Number of paraphrases = {sum(label_list)}, {sum(label_list)/len(self.sentence_id_pair_list)*100:.2f}% of total')
-            logger.info(f'Number of NON-paraphrases = {len(label_list) - sum(label_list)}, {(len(label_list) - sum(label_list))/len(self.sentence_id_pair_list)*100:.2f}% of total')
-            logger.info('#### PRINT STATEMENTS FOR TESTING ####\n')
-            #### PRINT STATEMENTS FOR TESTING ####
-
-            # map boolean list of labels to list of 0,1 ints
-            self.labels = list(map(int, label_list))
+        # map boolean list of labels to list of 0,1 ints
+        self.labels = list(map(int, label_list))
 
 
 

@@ -117,7 +117,7 @@ class RetrofitExperiment(Experiment):
             'quora',
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed, use_synonyms=self.args.use_synonyms
+            r1=0.5, seed=self.args.random_seed
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual

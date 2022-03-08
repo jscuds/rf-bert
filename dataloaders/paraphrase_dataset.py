@@ -353,7 +353,7 @@ class ParaphraseDatasetElmo(Dataset):
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
                  num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
-                 r1: float=0.5, seed: int = None, use_synonyms: bool = False):
+                 r1: float=0.5, seed: int = None):
         
         self.para_dataset = para_dataset
         self.model_name = model_name

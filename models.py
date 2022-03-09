@@ -167,7 +167,8 @@ class ElmoRetrofit(torch.nn.Module):
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
                          num_output_representations = num_output_representations,
-                         requires_grad=requires_grad, dropout=dropout)
+                         requires_grad=requires_grad, dropout=dropout,
+                         scalar_mix_parameters[-9e10, -9e10, 1])
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.

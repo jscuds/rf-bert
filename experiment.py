@@ -364,7 +364,7 @@ class FinetuneExperiment(Experiment):
         # TODO: argparse for scheduler hyperparams.
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5,
-            patience=8, min_lr=1e-6
+            patience=1, min_lr=1e-6
         )
 
     def step_lr_scheduler(self):

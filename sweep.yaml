@@ -20,12 +20,12 @@ parameters:
   dataset_name:
     values: ["rotten_tomatoes", "sst2"]
   epochs:
-    value: 10
+    value: 20
   batch_size:
-    value: 256
+    value: 64
   logs_per_epoch:
     value: 1
   epochs_per_model_save:
-    value: 2
+    value: 100
   model_weights:
-    values: ["models/retrofit_elmo_2022-03-02-2249/0_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/1_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/2_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/3_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/4_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/5_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/6_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/7_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/8_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/9_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/10_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/11_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/12_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/13_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/14_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/15_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/16_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/17_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/18_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/19_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/20_epochs.pth", "models/retrofit_elmo_2022-03-02-2249/21_epochs.pth"]
+    values: ['models/retrofit_elmo_2022-03-08-1011/save_epoch_0.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_1.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_2.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_3.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_4.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_5.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_6.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_7.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_8.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_9.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_10.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_11.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_12.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_13.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_14.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_15.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_16.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_17.pth', 'models/retrofit_elmo_2022-03-08-1011/save_epoch_18.pth']

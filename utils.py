@@ -1,9 +1,11 @@
-from typing import Dict, Set, Tuple, Union
+from typing import Any, Dict, Set, Tuple, Union
+
+import functools
 
 import numpy as np
+import termcolor
 import torch
 import wandb
-
 
 class TensorRunningAverages:
     """Averages values over an arbitrary-size logging window."""
@@ -95,3 +97,14 @@ def elmo_word_decode(word: Tuple) -> str:
         chars_in_word.append(chr(char-1))
 
     return ''.join(chars_in_word)
+
+
+def get_lr(optimizer: torch.optim.Optimizer) -> float:
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+
+
+red_text = lambda x: termcolor.colored(str(x), 'red')
+blue_text = lambda x: termcolor.colored(str(x), 'blue')
+yellow_text = lambda x: termcolor.colored(str(x), 'yellow')
+green_text = lambda x: termcolor.colored(str(x), 'green')

@@ -42,9 +42,9 @@ class TableLog:
         # NOTE: previously key of dictionary corresponded to a particular index of the dataset;
         #     After refactoring, the key is just a tuple `(epoch, range(num_table_examples), split)``
         if model_training: 
-            split='train'
+            split = 'train'
         else:
-            split='validation'
+            split = 'validation'
 
         for i in range(self.num_table_examples):
             key = (epoch,i,split)
@@ -67,7 +67,7 @@ class TableLog:
         
         # Each example will have 2 rows: Row A = Positive, Row B = Negative
         for epoch, i, split in sorted(self.table_pos_sent1_str.keys()):
-            key = (epoch,i,split)
+            key = (epoch, i, split)
             # Row A
             self.final_table.add_data(
                 epoch, i, 'positive', self.table_pos_sent1_str[key], self.table_pos_sent2_str[key],

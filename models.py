@@ -64,14 +64,14 @@ class ElmoClassifier(torch.nn.Module):
     #js added m_transform argument
     def __init__(self, options_file: str = OPTIONS_FILE, weight_file: str = WEIGHT_FILE, 
                  num_output_representations: int=1, requires_grad: bool=False, 
-                 dropout: float=0, embedding_dim: int=512, # embedding_dim matches ElmoLstm default
+                 ft_dropout: float=0.2, embedding_dim: int=512, # embedding_dim matches ElmoLstm default
                  sentence_pair: bool = False,
                  linear_hidden_dim: int=512, m_transform: bool = True,
-                 m_transform_requires_grad: bool = True):
+                 m_transform_requires_grad: bool = True, elmo_dropout: float = 0):
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
-                         num_output_representations = num_output_representations,
-                         requires_grad=requires_grad, dropout=dropout)
+                         num_output_representations=num_output_representations,
+                         requires_grad=requires_grad, dropout=elmo_dropout)
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.
@@ -87,12 +87,12 @@ class ElmoClassifier(torch.nn.Module):
         linear_input_size = (self.elmo_hidden_size*3 + 1) if sentence_pair else (self.elmo_hidden_size)
 
         # https://github.com/nyu-mll/GLUE-baselines/blob/b1c82396d960fd9725517089822d15e31b9882f5/src/models.py#L183
-        dropout = 0.2
+
         self.classifier = torch.nn.Sequential(
-            torch.nn.Dropout(p=dropout),
+            torch.nn.Dropout(p=ft_dropout),
             torch.nn.Linear(in_features=linear_input_size, out_features=linear_hidden_dim),
             torch.nn.Tanh(),
-            torch.nn.Dropout(p=dropout),
+            torch.nn.Dropout(p=ft_dropout),
             torch.nn.Linear(in_features=linear_hidden_dim, out_features=1),
             torch.nn.Sigmoid()
         )
@@ -127,8 +127,8 @@ class ElmoClassifier(torch.nn.Module):
             average_sent_2 = elmo_sent_2['elmo_representations'][0].mean(dim=1) #B x 1024
 
             u,v = average_sent_1, average_sent_2  
-            assert u.shape == (B,1024)
-            assert v.shape == (B,1024)
+            assert u.shape == (B, 1024)
+            assert v.shape == (B, 1024)
 
             # FROM GLUE baseline: github.com/nyu-mll/GLUE-baselines/blob/b1c82396d960fd9725517089822d15e31b9882f5/src/models.py#L330
             # return torch.cat([s1_enc, s2_enc, torch.abs(s1_enc - s2_enc), s1_enc * s2_enc], 1)
@@ -163,11 +163,11 @@ class ElmoRetrofit(torch.nn.Module):
     #js added m_transform argument
     def __init__(self, options_file: str = OPTIONS_FILE, weight_file: str = WEIGHT_FILE, 
                  num_output_representations: int=1, requires_grad: bool=False, 
-                 dropout: float=0, embedding_dim: int=512): # embedding_dim matches ElmoLstm default
+                 elmo_dropout: float=0, embedding_dim: int=512): # embedding_dim matches ElmoLstm default
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
                          num_output_representations = num_output_representations,
-                         requires_grad=requires_grad, dropout=dropout)
+                         requires_grad=requires_grad, dropout=elmo_dropout)
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.

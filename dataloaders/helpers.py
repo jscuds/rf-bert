@@ -38,8 +38,8 @@ def train_test_split(dataset: Dataset, batch_size: int, shuffle: bool = True,
     train_sampler = SubsetRandomSampler(train_indices)
     test_sampler = SubsetRandomSampler(test_indices)
 
-    train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler, drop_last=drop_last, pin_memory=True)
-    test_loader = DataLoader(dataset, batch_size=batch_size, sampler=test_sampler, drop_last=drop_last, pin_memory=True)
+    train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler, drop_last=drop_last, pin_memory=torch.cuda.is_available())
+    test_loader = DataLoader(dataset, batch_size=batch_size, sampler=test_sampler, drop_last=drop_last, pin_memory=torch.cuda.is_available())
 
     return train_loader, test_loader
 

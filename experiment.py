@@ -152,21 +152,43 @@ class RetrofitExperiment(Experiment):
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
         dataset = ParaphraseDatasetElmo(
-            'quora',
+            self.args.rf_dataset_name,
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed
+            r1=0.5, seed=self.args.random_seed, split='train'
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
         # test data from quora 
         #
         # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
-        train_dataloader, test_dataloader = train_test_split(
-            dataset, batch_size=self.args.batch_size, 
-            shuffle=True, drop_last=self.args.drop_last, 
-            train_split=self.args.train_test_split
-        )
+        if self.args.rf_dataset_name == 'quora':
+            train_dataloader, test_dataloader = train_test_split(
+                dataset, batch_size=self.args.batch_size, 
+                shuffle=True, drop_last=self.args.drop_last, 
+                train_split=self.args.train_test_split
+            )
+        # create a secomd val_dataset = ParaphraseDatasetElmo() object because mrpc has a train/validation split.
+        elif  self.args.rf_dataset_name == 'mrpc':
+            val_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
+                r1=0.5, seed=self.args.random_seed, split='validation'
+            )
+            train_dataloader = DataLoader(
+                dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
+            )
+            test_dataloader = DataLoader(
+                val_dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
+            )
+        
         # if we're tracking examples for a table, setup the table configuration
         if self.args.num_table_examples is not None:
             self.wb_table = (
@@ -382,26 +404,26 @@ class FinetuneExperiment(Experiment):
         if self.args.num_examples:
             logger.warn('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
 
-        if self.args.dataset_name == 'qqp':
+        if self.args.ft_dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
                 random_seed=self.args.random_seed
             )
-        elif self.args.dataset_name == 'rotten_tomatoes':
+        elif self.args.ft_dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
                 random_seed=self.args.random_seed
             )
-        elif self.args.dataset_name == 'sst2':
+        elif self.args.ft_dataset_name == 'sst2':
             train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
                 random_seed=self.args.random_seed
             )
         else:
-            raise ValueError(f'unrecognized fine-tuning dataset {self.args.dataset_name}')
+            raise ValueError(f'unrecognized fine-tuning dataset {self.args.ft_dataset_name}')
         return train_dataloader, test_dataloader
     
     def compute_loss_and_update_metrics(self,

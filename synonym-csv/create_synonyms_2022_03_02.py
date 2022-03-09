@@ -65,7 +65,7 @@ a = np.vstack([big_token_list, big_synonym_list]).T
 if NUM_EXAMPLES == 25_000:
     np.savetxt("25k_syn_list.csv", a, delimiter=",", fmt="%s")
 elif NUM_EXAMPLES is None:
-    np.savetxt("synonyms.csv", a, delimiter=",", fmt="%s")
+    np.savetxt("full_syn_list.csv", a, delimiter=",", fmt="%s")
 
 # TODO / IDEAS:
 # 0. Make this cleaner if it's used.

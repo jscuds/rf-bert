@@ -15,13 +15,13 @@ class TestTrainEnd2End:
             # This will fail because we specify the `elmo_single_sentence` model but
             # the QQP data is pairs of sentences.
             args = get_argparser().parse_args(
-                ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--dataset_name', 'qqp']
+                ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--ft_dataset_name', 'qqp']
             )
             model_folder = run_training_loop(args)
             shutil.rmtree(model_folder) # delete model saves after test
         # Now try again, but use the sentence-pair model.
         args = get_argparser().parse_args(
-            ['finetune', '--model_name', 'elmo_sentence_pair', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--dataset_name', 'qqp']
+            ['finetune', '--model_name', 'elmo_sentence_pair', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--ft_dataset_name', 'qqp']
         )
         model_folder = run_training_loop(args)
         shutil.rmtree(model_folder) # delete model saves after test
@@ -31,7 +31,7 @@ class TestTrainEnd2End:
         os.environ['WANDB_MODE'] = 'disabled' # disable W&B for testing
 
         args = get_argparser().parse_args(
-            ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--dataset_name', 'rotten_tomatoes']
+            ['finetune', '--model_name', 'elmo_single_sentence', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--ft_dataset_name', 'rotten_tomatoes']
         )
         model_folder = run_training_loop(args)
         shutil.rmtree(model_folder) # delete model saves after test
@@ -62,14 +62,14 @@ class TestTrainEnd2End:
         # --finetune_rf flag, when we try to load weights of a model
         # with an M matrix into a model that doesn't have an M matrix
         args2 = get_argparser().parse_args(
-            ['finetune', '--model_name', 'elmo_single_sentence', '--dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--model_weights', rf_model_path]
+            ['finetune', '--model_name', 'elmo_single_sentence', '--ft_dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--model_weights', rf_model_path]
         )
         with pytest.raises(AssertionError):
             run_training_loop(args2)
 
         # Now actually fine-tune that model for a tiny bit
         args3 = get_argparser().parse_args(
-            ['finetune', '--model_name', 'elmo_single_sentence', '--dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--model_weights', rf_model_path, '--finetune_rf']
+            ['finetune', '--model_name', 'elmo_single_sentence', '--ft_dataset_name', 'rotten_tomatoes', '--epochs', '2', '--num_examples', '8', '--batch_size', '4', '--model_weights', rf_model_path, '--finetune_rf']
         )
         ft_model_folder = run_training_loop(args3)
         # Delete new and old models

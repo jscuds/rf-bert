@@ -53,7 +53,9 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument('--model_name', type=str, default='elmo_single_sentence', 
         choices=['elmo_single_sentence', 'elmo_sentence_pair'], help='name of model to use')
-    parser.add_argument('--dataset_name', type=str, default='qqp', 
+    parser.add_argument('--rf_dataset_name', type=str, default='quora', 
+        choices=['quora', 'mrpc'], help='name of dataset to use for retrofitting')
+    parser.add_argument('--ft_dataset_name', type=str, default='qqp', 
         choices=['qqp', 'rotten_tomatoes', 'sst2'], help='name of dataset to use for finetuning')
     parser.add_argument('--model_weights', type=str, default=None,
         help='path to model weights to load, like `models/something.pth`')
@@ -65,6 +67,10 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
+    parser.add_argument('--elmo_dropout', type=float, default=0,
+        help='dropout probability (0,1] for elmo embeddings model')
+    parser.add_argument('--ft_dropout', type=float, default=0.2,
+        help='dropout probability (0,1] for classifier model')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -89,7 +95,6 @@ def get_argparser() -> argparse.ArgumentParser:
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
     # TODO add _task_dataset so we can switch between tasks for evaluation/attack
-    # TODO: additional model args? dropout...
     
     return parser
 

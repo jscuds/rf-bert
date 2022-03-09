@@ -353,7 +353,7 @@ class ParaphraseDatasetElmo(Dataset):
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
                  num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
-                 r1: float=0.5, seed: int = None):
+                 r1: float=0.5, seed: int = None, split: str = 'train'):
         
         self.para_dataset = para_dataset
         self.model_name = model_name
@@ -361,6 +361,7 @@ class ParaphraseDatasetElmo(Dataset):
         self.max_length = max_length
         self.r1 = r1 # negative sample ratio
         self.seed = seed # set to None for random
+        self._split = split
 
         # TODO do these only apply to 'quora'? if so --> move into self._load_dataset
         # TODO combine self._token_pair_to_neg_tuples and self._neg_tuples because the former references the latter?
@@ -423,18 +424,22 @@ class ParaphraseDatasetElmo(Dataset):
         # load quora or mrpc from HuggingFace
         if self.para_dataset == 'quora':
             dataset = datasets.load_dataset('quora')
+            dataset_shuffled = dataset.shuffle(seed=self.seed)
+            self._process_dataset(dataset_shuffled)
         elif self.para_dataset == 'mrpc':
             dataset = datasets.load_dataset('glue','mrpc')
-            
-        dataset_shuffled = dataset.shuffle(seed=self.seed)
+            dataset_shuffled = dataset.shuffle(seed=self.seed)
+            self._process_dataset(dataset_shuffled)
+
+    def _process_dataset(self, dataset_shuffled: datasets.DatasetDict):
         count = 0
 
         bad_count = 0              #js added for testing
         self.sentence_id_pair_list = [] #js added for testing
         label_list = []            #js added for testing
 
-        # TODO: Tokenize things beforehand!
-        for pair in tqdm.tqdm(dataset_shuffled['train'], desc=f'Processing {self.para_dataset} paraphrases'):
+
+        for pair in tqdm.tqdm(dataset_shuffled[self._split], desc=f'Processing {self.para_dataset} paraphrases from {self._split} split'):
             #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
             if (self.num_examples is not None) and count >= self.num_examples:
                 break
@@ -447,7 +452,7 @@ class ParaphraseDatasetElmo(Dataset):
 
             elif self.para_dataset == 'mrpc':
                 label = pair['label']
-                # mrpc dataset index is for the sentence pair, so I'm creating new indices for each sentence 
+                # mrpc dataset index is for the sentence pair, so I created new indices for each sentence 
                 # by multiplying pair index *10 + 0 for s1  and + 1 for s2
                 s1_id = pair['idx']*10
                 s2_id = pair['idx']*10 + 1
@@ -574,7 +579,6 @@ class ParaphraseDatasetElmo(Dataset):
 
         # map boolean list of labels to list of 0,1 ints
         self.labels = list(map(int, label_list))
-
 
 
     def _overlap(self, s1_tuple: Tuple[Tuple[int,...],...], s2_tuple: Tuple[Tuple[int,...],...]) -> List[List[int]]:

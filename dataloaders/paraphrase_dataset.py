@@ -355,6 +355,7 @@ class ParaphraseDatasetElmo(Dataset):
                  num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
                  r1: float=0.5, seed: int = None, split: str = 'train', lowercase_inputs: bool = False,
                  synonym_file: str = None):
+
         
         self.para_dataset = para_dataset
         self.model_name = model_name

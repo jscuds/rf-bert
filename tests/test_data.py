@@ -157,6 +157,7 @@ class TestMrpcElmo:
                     max_length = 40, stop_words_file = './stop_words_en.txt', r1 = 0.5, seed = 42, 
                     split = 'train', lowercase_inputs=True) # all of these are seed dependent
 
+
     def test_length(self):
         assert len(self.mrpc) == 10473
     
@@ -219,6 +220,7 @@ class TestMrpcElmo:
         assert (
             self.mrpc_lower._id_to_sent[0] == sent
         )
+
 
 class TestClassificationDatasets:
     def test_rotten_tomatoes_elmo(self):

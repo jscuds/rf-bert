@@ -99,6 +99,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='add list of strings to be used as tags for W&B')
     parser.add_argument('--wandb_notes', type=str, default=None,
         help='pass notes for W&B runs.')
+    parser.add_argument('--wandb_title_add', type=str, default=None,
+        help='add title descriptions to `experiment_model_day_` W&B runs.')
 
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
@@ -151,6 +153,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
     day = time.strftime(f'%Y-%m-%d-%H%M')
     # NOTE(js): `args.model_name[:4]` just grabs "elmo" or "bert"; feel free to change later
     exp_name = f'{args.experiment}_{args.model_name[:4]}_{day}' 
+    if args.wandb_title_add: 
+        exp_name += f'_{args.wandb_title_add}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     config_dict = copy.copy(vars(args))
     config_dict.update({
@@ -162,6 +166,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
         del config_dict['wandb_tags']
     if args.wandb_notes: 
         del config_dict['wandb_notes']
+    if args.wandb_title_add: 
+        del config_dict['wandb_title_add']
     
     wandb.init(
         name=exp_name,

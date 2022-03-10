@@ -353,7 +353,7 @@ class ParaphraseDatasetElmo(Dataset):
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
                  num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
-                 r1: float=0.5, seed: int = None, split: str = 'train'):
+                 r1: float=0.5, seed: int = None, split: str = 'train', lowercase_inputs: bool = False):
         
         self.para_dataset = para_dataset
         self.model_name = model_name
@@ -362,6 +362,7 @@ class ParaphraseDatasetElmo(Dataset):
         self.r1 = r1 # negative sample ratio
         self.seed = seed # set to None for random
         self._split = split
+        self.lowercase_inputs = lowercase_inputs
 
         # TODO do these only apply to 'quora'? if so --> move into self._load_dataset
         # TODO combine self._token_pair_to_neg_tuples and self._neg_tuples because the former references the latter?
@@ -415,7 +416,7 @@ class ParaphraseDatasetElmo(Dataset):
                 torch.tensor(nsent2).reshape(self.max_length,50), 
                 token1, token2, ntoken1, ntoken2)
 
-    # TODO add MRPC, PAN...
+    # TODO add PAN...
     def _load_dataset(self):
         """
         Loads relevant paraphrase dataset based on argument passed to constructor and creates attributes for model training.
@@ -432,12 +433,11 @@ class ParaphraseDatasetElmo(Dataset):
             self._process_dataset(dataset_shuffled)
 
     def _process_dataset(self, dataset_shuffled: datasets.DatasetDict):
+        
         count = 0
-
-        bad_count = 0              #js added for testing
-        self.sentence_id_pair_list = [] #js added for testing
-        label_list = []            #js added for testing
-
+        bad_count = 0
+        self.sentence_id_pair_list = []
+        label_list = []
 
         for pair in tqdm.tqdm(dataset_shuffled[self._split], desc=f'Processing {self.para_dataset} paraphrases from {self._split} split'):
             #count += 1 #TODO incrementing here means you don't actually get 20k examples. It's what Shi did.
@@ -478,10 +478,13 @@ class ParaphraseDatasetElmo(Dataset):
                 s2 = s2.replace('\n', ' ')
 
             #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
-            self.sentence_id_pair_list.append((s1_id,s2_id)) #js added
-            label_list.append(label)                    #js added
-            #### CODE FOR TESTING HOW MANY EXAMPLES ARE POSITIVE AND NEGATIVE ####
+            self.sentence_id_pair_list.append((s1_id,s2_id))
+            label_list.append(label)
 
+            # Lowercase inputs if args.lowercase_inputs = True
+            if self.lowercase_inputs:
+                s1 = s1.lower()
+                s2 = s2.lower()
 
             #elmo_change using batch_to_ids and tokenizer
             s1_interim_tokenized = batch_to_ids([self.tokenizer(s1)]) # shape: (1,seq_length, 50)
@@ -681,8 +684,10 @@ class ParaphraseDatasetElmo(Dataset):
 
         stop_words = np.genfromtxt(filename, dtype='str')
         stop_words = stop_words.tolist()
+        
         # have a variant of all stopwords where they are capitalized (use case: beginning of sentence)
-        stop_words = [token.capitalize() for token in stop_words] + stop_words
+        if not self.lowercase_inputs:
+            stop_words = [token.capitalize() for token in stop_words] + stop_words
 
         tokenized_stop_words = self.tokenizer(" ".join(stop_words))
         tokenized_punc = self.tokenizer(PUNC)[0] #TODO: move PUNC assignment within this method?

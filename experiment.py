@@ -155,7 +155,8 @@ class RetrofitExperiment(Experiment):
             self.args.rf_dataset_name,
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed, split='train'
+            r1=0.5, seed=self.args.random_seed, split='train',
+            lowercase_inputs=self.args.lowercase_inputs
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
@@ -174,7 +175,8 @@ class RetrofitExperiment(Experiment):
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
                 max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=0.5, seed=self.args.random_seed, split='validation'
+                r1=0.5, seed=self.args.random_seed, split='validation',
+                lowercase_inputs=self.args.lowercase_inputs
             )
             train_dataloader = DataLoader(
                 dataset, 
@@ -408,19 +410,19 @@ class FinetuneExperiment(Experiment):
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'sst2':
             train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.ft_dataset_name}')

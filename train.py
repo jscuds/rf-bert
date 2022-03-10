@@ -86,6 +86,10 @@ def get_argparser() -> argparse.ArgumentParser:
             'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
     parser.add_argument('--model_weights_drop_linear', default=False, action='store_true',
         help='If we are fine-tuning a model that previously had a linear layer, don\'t load the weights for the linear layer')
+    parser.add_argument('--lowercase_inputs', default=False, action='store_true',
+        help='Input sequences are lowercased before conversion to token ids.')
+
+    # W&B arguments: tags & notes
     parser.add_argument('--wandb_tags', nargs='+', default=None,
         help='add list of strings to be used as tags for W&B')
     parser.add_argument('--wandb_notes', type=str, default=None,

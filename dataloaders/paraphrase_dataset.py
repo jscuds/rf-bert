@@ -633,23 +633,24 @@ class ParaphraseDatasetElmo(Dataset):
 
         if self.synonyms:
             for k in s1_dict.keys():
-                if k in self.synonyms:
+                if (k in self.synonyms) and (k not in self.stop_words_set):
                     for syn in self.synonyms[k]:
-                        if syn in s2_dict.keys():
+                        if (syn in s2_dict.keys()) and (syn not in self.stop_words_set):
                             synonym_pairs.append((s1_dict[k], s2_dict[syn]))
                             # self.TEST_WORDS.append((k,syn))
                             # self.TEST_SENTS.append((s1_tuple,s2_tuple))
                             # self.TEST_SYNS.append((s1_dict[k], s2_dict[syn]))
+                else: continue
 
             for k in s2_dict.keys():
-                if k in self.synonyms:
+                if (k in self.synonyms) and (k not in self.stop_words_set):
                     for syn in self.synonyms[k]:
-                        if syn in s1_dict.keys():
+                        if (syn in s1_dict.keys()) and (syn not in self.stop_words_set):
                             synonym_pairs.append((s1_dict[syn], s2_dict[k]))
                             # self.TEST_WORDS.append((syn,k))
                             # self.TEST_SENTS.append((s1_tuple,s2_tuple))
                             # self.TEST_SYNS.append((s1_dict[syn], s2_dict[k]))
-
+                else: continue
         synonym_pairs = list(set(synonym_pairs))
         return word_pairs + synonym_pairs
 
@@ -677,7 +678,10 @@ class ParaphraseDatasetElmo(Dataset):
 
         # token_id of ONE OVERLAP WORD; INDEXING: finds s1_id in `_id_to_sent` Tensor, then uses the overlap word index to get the token_id of that word
         #    then using `token`, find all possible sentences with that token: set(sent_id, index_of_token)
-        token = self._id_to_sent[target_sent_id][target_sent_index]  
+        token = self._id_to_sent[target_sent_id][target_sent_index]
+        #DEBUG
+        if token not in self._token_to_sents.keys():
+            print(f'\n\n==============\ntoken: {token}\n\ntarget_sent_id: {target_sent_id}\n\ntarget_sent_index: {target_sent_index}\n\n==============\n')
         sents_set = copy.copy(self._token_to_sents[token])  #copy.copy() o/w it modifies the actual self._token_to_sents dictionary
         
         # remove s1 and s2 out of the set of possible sentences with token

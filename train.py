@@ -35,7 +35,8 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument('--optimizer', type=str, default='sgd', choices=('adam', 'sgd'),
         help='Optimizer to use for training')
-    parser.add_argument('--random_seed', type=int, default=42)
+    parser.add_argument('--random_seed', type=int, default=42,
+        help='set random seed')
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
     parser.add_argument('--epochs_per_model_save', default=3, 
@@ -165,7 +166,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Log to a file and stdout
     Path("logs/").mkdir(exist_ok=True)
     logging.basicConfig(
-        force=True,
         level=logging.INFO,
         handlers=[
             logging.FileHandler(f'logs/{exp_name}.log'),

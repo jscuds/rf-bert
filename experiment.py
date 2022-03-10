@@ -156,7 +156,7 @@ class RetrofitExperiment(Experiment):
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
             r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
-            lowercase_inputs=self.args.lowercase_inputs
+            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
@@ -176,7 +176,7 @@ class RetrofitExperiment(Experiment):
                 model_name='elmo', num_examples=self.args.num_examples, 
                 max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
                 r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
-                lowercase_inputs=self.args.lowercase_inputs
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             train_dataloader = DataLoader(
                 dataset, 
@@ -401,10 +401,10 @@ class FinetuneExperiment(Experiment):
         logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
+        logger.warning('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
 
         if self.args.num_examples:
-            logger.warn('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
+            logger.warning('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
 
         if self.args.ft_dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(

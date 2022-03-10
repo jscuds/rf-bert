@@ -73,6 +73,8 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--neg_samp_ratio', type=float, default=0.5,
         help=('Proportion [0,1) to use ._corrupt() or ._gen_neg_tuple() for negative samples;'
               ' 0 exclusively uses ._corrupt() and 1 exclusively uses ._gen_neg_tuple'))
+    parser.add_argument('--synonym_file', type=str, default=None,
+        help='path to synonym file to load, like `synonym-csv/something.csv`')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False

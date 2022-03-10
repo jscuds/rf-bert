@@ -4,13 +4,13 @@ import pickle
 import random
 import re
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 import datasets
 import numpy as np
 import torch
 import tqdm
-
 from allennlp.modules.elmo import Elmo, batch_to_ids
 from mosestokenizer import MosesTokenizer
 from torch import Tensor, nn, optim
@@ -353,7 +353,8 @@ class ParaphraseDatasetElmo(Dataset):
     """    
     def __init__(self, para_dataset: str = 'quora', model_name: str = 'elmo', 
                  num_examples: int = 25000, max_length: int = 40, stop_words_file: str = 'stop_words_en.txt',
-                 r1: float=0.5, seed: int = None, split: str = 'train', lowercase_inputs: bool = False):
+                 r1: float=0.5, seed: int = None, split: str = 'train', lowercase_inputs: bool = False,
+                 synonym_file: str = None):
         
         self.para_dataset = para_dataset
         self.model_name = model_name
@@ -383,8 +384,16 @@ class ParaphraseDatasetElmo(Dataset):
         # load stop words from file
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
         self.stop_words_set = set([])
+        self.synonyms = {}
         logger.info(f'Generating stop words from {stop_words_file}...\n')
         self._gen_stop_words(stop_words_file)
+        if synonym_file:
+            self.synonyms = self._gen_synonyms(synonym_file)
+        
+        # TODO: remove or convert into some logging
+        # self.TEST_WORDS = []
+        # self.TEST_SENTS = []
+        # self.TEST_SYNS = []
 
         # load quora, mrpc, etc.
         logger.info(f'Loading {para_dataset} dataset...\n')
@@ -601,10 +610,10 @@ class ParaphraseDatasetElmo(Dataset):
         # check intersection: find all the common words between sentences
         inter = set(s1_dict.keys()).intersection(set(s2_dict.keys()))
 
-        #removes all token_ids of stopwords TO INCLUDE [0]*50 (padding)
+        # removes all token_ids of stopwords TO INCLUDE [0]*50 (padding)
         inter.difference_update(self.stop_words_set) 
         
-        #elmo_change: same effect as filtering out all words that begin with '-' or digits 0-9
+        # elmo_change: same effect as filtering out all words that begin with '-' or digits 0-9
         #   index 0 of a chracter_id token tuple (length 50) is always 259
         #   index 1 is the first character of the word, so this is what we're checking
         #   elmo char_ids are based on ord()+1, so ord('-') = 45, but elmo char_id of '-' is 46
@@ -618,9 +627,30 @@ class ParaphraseDatasetElmo(Dataset):
             w1_id = s1_dict[w]
             w2_id = s2_dict[w]
             word_pairs.append([w1_id, w2_id])
+        
+        synonym_pairs = []
 
-        #js NOTE: removed ~15 lines of references to synonyms/synonym_pairs because synonyms.tsv wasn't provided
-        return word_pairs
+        if self.synonyms:
+            for k in s1_dict.keys():
+                if k in self.synonyms:
+                    for syn in self.synonyms[k]:
+                        if syn in s2_dict.keys():
+                            synonym_pairs.append((s1_dict[k], s2_dict[syn]))
+                            # self.TEST_WORDS.append((k,syn))
+                            # self.TEST_SENTS.append((s1_tuple,s2_tuple))
+                            # self.TEST_SYNS.append((s1_dict[k], s2_dict[syn]))
+
+            for k in s2_dict.keys():
+                if k in self.synonyms:
+                    for syn in self.synonyms[k]:
+                        if syn in s1_dict.keys():
+                            synonym_pairs.append((s1_dict[syn], s2_dict[k]))
+                            # self.TEST_WORDS.append((syn,k))
+                            # self.TEST_SENTS.append((s1_tuple,s2_tuple))
+                            # self.TEST_SYNS.append((s1_dict[syn], s2_dict[k]))
+
+        synonym_pairs = list(set(synonym_pairs))
+        return word_pairs + synonym_pairs
 
     def _corrupt(self, para_tuple: Tuple[int,int,int,int], target_sent: Optional[int]=None) -> Tuple[int,int,int,int]:
         """
@@ -684,7 +714,7 @@ class ParaphraseDatasetElmo(Dataset):
 
         stop_words = np.genfromtxt(filename, dtype='str')
         stop_words = stop_words.tolist()
-        
+
         # have a variant of all stopwords where they are capitalized (use case: beginning of sentence)
         if not self.lowercase_inputs:
             stop_words = [token.capitalize() for token in stop_words] + stop_words
@@ -700,6 +730,58 @@ class ParaphraseDatasetElmo(Dataset):
 
         # a set of of tuples representing the length-50 ELMo char_ids
         self.stop_words_set = stop_words_set
+
+    def _gen_synonyms(self, filename: str) -> Dict[Tuple[int,...], Set[Tuple[int,...]]]:
+        """
+        Generates a dictionary mapping a token_id tuple to a set of its synonyms.
+        Saves a pickled dictionary if this is the first time a .csv has been processed.
+        """
+        # check to see if a .pkl file has already been created
+        # synonym-csv/synonyms_shi.csv --> synonym-csv/synonyms_shi_elmo.pkl
+        pickled_filename = f"{filename[:-4]}_{self.model_name}.pkl"
+        
+        check_path = Path(pickled_filename)
+        if check_path.is_file():
+            logger.info(f'Loading synonym dictionary from {pickled_filename}')
+            synonyms_dict = pickle.load(open(pickled_filename, 'rb'))
+            
+        else:
+            logger.info(f'Pickled synonym dictionary doesn\'t exist. Creating synonym_dict from {filename}.')
+            # 1st column of all synonym csv files is base_words, 2nd column is synonyms from WordNet for a given base_word
+            # Order matters when reading in the data and creating the dictionary
+            synonyms_array = np.genfromtxt(filename, delimiter=',', dtype=str) # shape: [num_rows,2]
+            
+            # grab base word column (0) and WordNet synonyms (1)
+            base_words = synonyms_array[:,0].tolist()
+            wordnet_synonyms = synonyms_array[:,1].tolist()
+            if self.lowercase_inputs:
+                base_words = [token.lower() for token in base_words]
+                wordnet_synonyms = [token.lower() for token in wordnet_synonyms]
+            
+            # convert to ELMo char_ids
+            token_id_array = batch_to_ids([base_words, wordnet_synonyms]) # shape: [2,num_rows,50]
+            token_id_array = token_id_array.transpose(0,1) # shape: [num_rows,2,50]
+            
+            # create dictionary of tuple mappings
+            synonyms_dict = {}
+            # add two way lookup between a base word and its synonym
+            for base, syn in tqdm.tqdm(token_id_array, desc= f'Processing synonyms from {filename}'):
+                base, syn = tuple(base.tolist()), tuple(syn.tolist())
+                if base == syn: continue
+                if (base or syn) in self.stop_words_set: continue
+                synonyms_dict.setdefault(base, set()).add(syn)
+                synonyms_dict.setdefault(syn, set()).add(base)
+            
+            # pickle file to save time later
+            with open(pickled_filename, 'wb') as f:
+                pickle.dump(synonyms_dict, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return synonyms_dict
+
+        # TODO: add capitalized version of all base words??
+        #     need to do this after matching all words up to their synonyms in a dictionary...
+        # base_words += [token.capitalize() for token in base_words]
+
 
     def _gen_neg_tuple(self, para_tuple: Tuple[int,int,int,int]) -> Optional[Tuple[int,int,int,int]]:
         """

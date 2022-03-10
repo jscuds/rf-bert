@@ -354,7 +354,8 @@ class FinetuneExperiment(Experiment):
     """Configures experiments for fine-tuning models, typically for
     classification-based tasks like those from the GLUE benchmark.
     """
-    model: ElmoClassifier
+    model: torch.nn.Module
+    tokenizer: Callable
     optimizer: torch.optim.Optimizer
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
@@ -362,21 +363,25 @@ class FinetuneExperiment(Experiment):
     is_sentence_pair: bool
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair"}
+        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair", "bert-base-cased"}
         self.args = args
-        self.is_sentence_pair = (args.model_name == "elmo_sentence_pair")
 
-        self.model = (
-            ElmoClassifier(
-                num_output_representations=1, 
-                requires_grad=False, 
-                ft_dropout=args.ft_dropout,
-                sentence_pair=self.is_sentence_pair,
-                m_transform=args.finetune_rf,
-                m_transform_requires_grad=False,
-                elmo_dropout=args.elmo_dropout
-            )
-        ).to(device)
+        if self.model.startswith("elmo"):
+            self.model = (
+                ElmoClassifier(
+                    num_output_representations=1, 
+                    requires_grad=False, 
+                    ft_dropout=args.ft_dropout,
+                    sentence_pair=(args.model_name == "elmo_sentence_pair"),
+                    m_transform=args.finetune_rf,
+                    m_transform_requires_grad=False,
+                    elmo_dropout=args.elmo_dropout
+                )
+            ).to(device)
+        else:
+            # TODO: argparse for num. labels?
+            self.model = transformers.AutoModelForSequenceClassification.from_pretrained(args.model_nam, num_labels=1)
+            
         self.create_optimizer_and_lr_scheduler(args)
         self._loss_fn = torch.nn.BCELoss()
         self.metric_averages = TensorRunningAverages()
@@ -442,19 +447,25 @@ class FinetuneExperiment(Experiment):
 
         Returns loss as float torch.Tensor of shape ().
         """
-        if len(batch) == 2: # single-sentence classification
+        if self.model_name == "elmo_single_sentence": # single-sentence classification
+            assert len(batch) == 2
             assert not self.is_sentence_pair
             sentence, targets = batch
             sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
             preds = self.model(sentence)
-        elif len(batch) == 3: # sentence-pair classification
-            assert self.is_sentence_pair
+        elif self.model_name == "elmo_sentence_pair": # sentence-pair classification
+            assert len(batch) == 3
             sentence1, sentence2, targets = batch
             # We pass sentence pairs to the model as a tensor of shape (B, 2, ...)
             # instead of a tuple of two tensors.
             sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
             targets = targets.to(device)
             preds = self.model(sentence_stacked)
+        elif self.model_name == "transformer":
+            sentence, targets = batch
+            batch = {k: v.to(device) for k, v in batch.items()}
+            sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
+            preds = self.model(sentence)['??']
         else:
             raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
 

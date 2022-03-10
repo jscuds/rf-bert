@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import (
-    load_rotten_tomatoes, load_qqp, load_sst2, train_test_split
+    load_rotten_tomatoes, load_qqp, load_sst2
 )
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
@@ -153,22 +153,35 @@ class RetrofitExperiment(Experiment):
         # TODO: pass proper args to ParaphaseDataset
         r1 = 0.5
         print('Set r1 =', r1)
-        dataset = ParaphraseDatasetElmo(
-            self.args.rf_dataset_name,
-            model_name='elmo', num_examples=self.args.num_examples, 
-            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-            r1=r1, seed=self.args.random_seed, split='train'
-        )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
         # test data from quora 
         #
         # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
         if self.args.rf_dataset_name == 'quora':
-            train_dataloader, test_dataloader = train_test_split(
-                dataset, batch_size=self.args.batch_size, 
-                shuffle=True, drop_last=self.args.drop_last, 
-                train_split=self.args.train_test_split
+            train_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=r1, seed=self.args.random_seed, split='train'
+            )
+            train_dataloader = DataLoader(
+                train_dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
+            )
+            val_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=r1, seed=self.args.random_seed, split='validation'
+            )
+            test_dataloader = DataLoader(
+                val_dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
             )
         # create a secomd val_dataset = ParaphraseDatasetElmo() object because mrpc has a train/validation split.
         elif  self.args.rf_dataset_name == 'mrpc':

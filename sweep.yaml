@@ -17,7 +17,7 @@ parameters:
     value: "adam"
   model_name:
     value: "elmo_single_sentence"
-  dataset_name:
+  ft_dataset_name:
     values: ["rotten_tomatoes", "sst2"]
   epochs:
     value: 20

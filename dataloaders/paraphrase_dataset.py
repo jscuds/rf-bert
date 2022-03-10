@@ -423,11 +423,11 @@ class ParaphraseDatasetElmo(Dataset):
 
         # load quora or mrpc from HuggingFace
         if self.para_dataset == 'quora':
-            dataset = datasets.load_dataset('quora')
+            dataset = datasets.load_dataset('glue', 'qqp')
             dataset_shuffled = dataset.shuffle(seed=self.seed)
             self._process_dataset(dataset_shuffled)
         elif self.para_dataset == 'mrpc':
-            dataset = datasets.load_dataset('glue','mrpc')
+            dataset = datasets.load_dataset('glue', 'mrpc')
             dataset_shuffled = dataset.shuffle(seed=self.seed)
             self._process_dataset(dataset_shuffled)
 
@@ -443,11 +443,11 @@ class ParaphraseDatasetElmo(Dataset):
             if (self.num_examples is not None) and count >= self.num_examples:
                 break
             if self.para_dataset == 'quora':
-                label = pair['is_duplicate']
-                s1_id = pair['questions']['id'][0]
-                s2_id = pair['questions']['id'][1]
-                s1 = pair['questions']['text'][0]
-                s2 = pair['questions']['text'][1]
+                label = pair['label']
+                s1_id = pair['idx']*10
+                s2_id = pair['idx']*10 + 1
+                s1 = pair['question1']
+                s2 = pair['question2']
 
             elif self.para_dataset == 'mrpc':
                 label = pair['label']
@@ -534,7 +534,7 @@ class ParaphraseDatasetElmo(Dataset):
                     w1 = self._tensor_to_token_tuples(s1_tokenized[:,p[0],:]) # original w1 & w2 shape: [1,1,50]
                     w2 = self._tensor_to_token_tuples(s2_tokenized[:,p[1],:]) # new w1 & w2 len = 50
 
-
+                    # TODO: we should lowercase words before checking stopwords
                     #js filter out stopwords from negative sentences
                     #  stopwords are filtered out of pos sentences in self.overlap_()
                     if w1 in self.stop_words_set or w2 in self.stop_words_set:

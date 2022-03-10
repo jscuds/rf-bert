@@ -679,9 +679,6 @@ class ParaphraseDatasetElmo(Dataset):
         # token_id of ONE OVERLAP WORD; INDEXING: finds s1_id in `_id_to_sent` Tensor, then uses the overlap word index to get the token_id of that word
         #    then using `token`, find all possible sentences with that token: set(sent_id, index_of_token)
         token = self._id_to_sent[target_sent_id][target_sent_index]
-        #DEBUG
-        if token not in self._token_to_sents.keys():
-            print(f'\n\n==============\ntoken: {token}\n\ntarget_sent_id: {target_sent_id}\n\ntarget_sent_index: {target_sent_index}\n\n==============\n')
         sents_set = copy.copy(self._token_to_sents[token])  #copy.copy() o/w it modifies the actual self._token_to_sents dictionary
         
         # remove s1 and s2 out of the set of possible sentences with token

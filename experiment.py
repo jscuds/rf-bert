@@ -151,11 +151,13 @@ class RetrofitExperiment(Experiment):
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
+        r1 = 0.5
+        print('Set r1 =', r1)
         dataset = ParaphraseDatasetElmo(
             self.args.rf_dataset_name,
             model_name='elmo', num_examples=self.args.num_examples, 
-            max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed, split='train'
+            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+            r1=r1, seed=self.args.random_seed, split='train'
         )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
@@ -174,7 +176,7 @@ class RetrofitExperiment(Experiment):
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
                 max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=0.5, seed=self.args.random_seed, split='validation'
+                r1=r1, seed=self.args.random_seed, split='validation'
             )
             train_dataloader = DataLoader(
                 dataset, 
@@ -288,7 +290,7 @@ class RetrofitExperiment(Experiment):
         assert len(M.shape) == 2
         assert M.shape[0] == M.shape[1]
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-        return torch.norm(I - torch.matmul(M.T, M), p='fro')
+        return torch.norm(I - torch.matmul(M.T, M), p=2)
 
     def compute_loss_and_update_metrics(self,
             batch: Tuple[torch.Tensor], metrics_key: str,

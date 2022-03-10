@@ -10,12 +10,18 @@ from allennlp.modules.elmo import Elmo
 #########################################################
 
 
-OPTIONS_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json"
-WEIGHT_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5"
+# OPTIONS_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_options.json"
+# WEIGHT_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway/elmo_2x4096_512_2048cnn_2xhighway_weights.hdf5"
+
+OPTIONS_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_options.json"
+WEIGHT_FILE = "https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_5.5B/elmo_2x4096_512_2048cnn_2xhighway_5.5B_weights.hdf5"
+
 
 class ElmoLstmWithTransformation(torch.nn.Module):
     """Appends a linear transformation (via inner `M` matrix) to ElmoLstm."""
     def __init__(self, lstm: ElmoLstm, embedding_dim=512, requires_grad=True): # embedding_dim matches ElmoLstm default
+        # https://github.com/allenai/allennlp/blob/1caf0dafa3bc8d0bb309a46e2ccb12f714923260/allennlp/modules/elmo.py#L597
+        # https://github.com/allenai/allennlp/blob/1caf0dafa3bc8d0bb309a46e2ccb12f714923260/allennlp/modules/elmo_lstm.py#L21
         super().__init__()
         self.lstm = lstm
         self.M = torch.nn.Parameter(
@@ -165,13 +171,9 @@ class ElmoRetrofit(torch.nn.Module):
                  elmo_dropout: float=0, embedding_dim: int=512): # embedding_dim matches ElmoLstm default
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
-                         num_output_representations = num_output_representations,
-<<<<<<< HEAD
-                         requires_grad=requires_grad, dropout=dropout,
-                         scalar_mix_parameters[-9e10, -9e10, 1])
-=======
-                         requires_grad=requires_grad, dropout=elmo_dropout)
->>>>>>> 23f3222ccab0d71f2b7071fe2f7015211bea512c
+                         num_output_representations=num_output_representations,
+                         requires_grad=requires_grad, dropout=elmo_dropout,
+                         scalar_mix_parameters=[-9e10, 1, -9e10])
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.

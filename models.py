@@ -167,13 +167,12 @@ class ElmoRetrofit(torch.nn.Module):
     #js added requires_grad argument to switch for freezing/un-freezing weights
     #js added m_transform argument
     def __init__(self, options_file: str = OPTIONS_FILE, weight_file: str = WEIGHT_FILE, 
-                 num_output_representations: int=1, requires_grad: bool=False, 
+                 requires_grad: bool=False, 
                  elmo_dropout: float=0, embedding_dim: int=512): # embedding_dim matches ElmoLstm default
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
-                         num_output_representations=num_output_representations,
-                         requires_grad=requires_grad, dropout=elmo_dropout,
-                         scalar_mix_parameters=[-9e10, 1, -9e10])
+                         num_output_representations=4,
+                         requires_grad=requires_grad, dropout=elmo_dropout)
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
         # to the embeddings before passing them to the LSTM.
@@ -208,9 +207,9 @@ class ElmoRetrofit(torch.nn.Module):
         assert neg_token_1.shape == neg_token_2.shape == (batch_size,)
 
         pos_sent_1 = self.elmo(pos_sent_1)['elmo_representations'][0] # new shape: [batch_size, 40, 1024]
-        pos_sent_2 = self.elmo(pos_sent_2)['elmo_representations'][0]
-        neg_sent_1 = self.elmo(neg_sent_1)['elmo_representations'][0]
-        neg_sent_2 = self.elmo(neg_sent_2)['elmo_representations'][0]
+        pos_sent_2 = self.elmo(pos_sent_2)['elmo_representations'][1]
+        neg_sent_1 = self.elmo(neg_sent_1)['elmo_representations'][2]
+        neg_sent_2 = self.elmo(neg_sent_2)['elmo_representations'][3]
 
         # https://stackoverflow.com/questions/66900676/select-specific-indexes-of-3d-pytorch-tensor-using-a-1d-long-tensor-that-represe
         # Using a 1D tensor as an index for 1-dimension of a 3D tensor

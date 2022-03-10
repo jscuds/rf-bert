@@ -226,6 +226,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
     epoch_start_time = time.time()
     training_step = 0
+    # TODO: Optionally run an eval step before training starts (to get the model
+    # stats before any weights are changed)
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
         for epoch_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):

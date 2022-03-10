@@ -131,7 +131,6 @@ class RetrofitExperiment(Experiment):
         self.args = args
         self.model = (
             ElmoRetrofit(
-                num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
                 elmo_dropout=args.elmo_dropout,
             ).to(device)
@@ -173,7 +172,7 @@ class RetrofitExperiment(Experiment):
             )
             val_dataset = ParaphraseDatasetElmo(
                 self.args.rf_dataset_name,
-                model_name='elmo', num_examples=self.args.num_examples, 
+                model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048), 
                 max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
                 r1=r1, seed=self.args.random_seed, split='validation'
             )
@@ -240,7 +239,7 @@ class RetrofitExperiment(Experiment):
 
     def compute_and_reset_metrics(self, step: int, epoch: int) -> Dict[str, float]:
         # Override this method to also draw histograms of distances.
-        self._draw_histograms(step, epoch)
+        # self._draw_histograms(step, epoch)
         # Then return the normal result.
         return super().compute_and_reset_metrics(step, epoch)
 
@@ -266,11 +265,11 @@ class RetrofitExperiment(Experiment):
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
         
         # If model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
-        if self.model.training:
-            self.pos_dist_list += positive_pair_distance.tolist()
-            self.neg_dist_list += negative_pair_distance.tolist() 
-            self.diff_dist_list += (positive_pair_distance - negative_pair_distance).tolist()
-            self.diff_dist_plus_margin_list += loss.tolist()
+        # if self.model.training:
+        #     self.pos_dist_list += positive_pair_distance.tolist()
+        #     self.neg_dist_list += negative_pair_distance.tolist() 
+        #     self.diff_dist_list += (positive_pair_distance - negative_pair_distance).tolist()
+        #     self.diff_dist_plus_margin_list += loss.tolist()
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)

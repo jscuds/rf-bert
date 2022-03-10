@@ -155,7 +155,7 @@ class RetrofitExperiment(Experiment):
             self.args.rf_dataset_name,
             model_name='elmo', num_examples=self.args.num_examples, 
             max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed, split='train',
+            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
             lowercase_inputs=self.args.lowercase_inputs
         )
         # Quora doesn't have a test split, so we have to do this?
@@ -175,7 +175,7 @@ class RetrofitExperiment(Experiment):
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
                 max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=0.5, seed=self.args.random_seed, split='validation',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
                 lowercase_inputs=self.args.lowercase_inputs
             )
             train_dataloader = DataLoader(

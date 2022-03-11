@@ -3,6 +3,7 @@
 *.docx
 local-misc/
 
+*.pkl
 *.pt
 models/
 

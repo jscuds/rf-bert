@@ -44,9 +44,12 @@ def train_test_split(dataset: Dataset, batch_size: int, shuffle: bool = True,
     return train_loader, test_loader
 
 def elmo_tokenize_and_pad(
-        tokenizer: MosesTokenizer, text: str, max_length: int, hidden_size: int = 50
+        tokenizer: MosesTokenizer, text: str, max_length: int, hidden_size: int = 50, lowercase_inputs: bool = False
     ) -> torch.Tensor:
     """Tokenizes a single sentence and truncates/pads to length `max_length`."""
+    if lowercase_inputs:
+        text = text.lower()
+
     text = tokenizer(text)
     # TODO: Figure out how to do this successfully in batch.
     text_ids = batch_to_ids([text])[0]
@@ -59,7 +62,8 @@ def elmo_tokenize_and_pad(
     return text_ids.tolist()
 
 
-def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_length: int):
+def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_length: int, lowercase_inputs: bool
+    ) -> datasets.Dataset:
     """Tokenizes 'text' field and returns dataset with each column of `text_columns` transformed to token IDs,
         as well as a 'label' column.
     """
@@ -67,7 +71,7 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
     def text_to_ids(e):
         for col in text_columns:
             text = e[col]
-            e[col] = elmo_tokenize_and_pad(elmo_tokenizer, text, max_length)
+            e[col] = elmo_tokenize_and_pad(elmo_tokenizer, text, max_length, lowercase_inputs)
         return e
 
     # Caching sometimes causes weird issues with .map(), if you see that then
@@ -105,7 +109,8 @@ def dataloader_from_dataset(
 
 
 def load_rotten_tomatoes(
-        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
+        lowercase_inputs: bool = False
     ) -> Tuple[DataLoader, DataLoader]:
     """Returns tuple of (train_dataloader, test_dataloader)."""
     dataset = datasets.load_dataset('rotten_tomatoes').shuffle(seed=random_seed)
@@ -115,7 +120,12 @@ def load_rotten_tomatoes(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(dataset=dataset, text_columns=['text'], max_length=max_length)
+    dataset = prepare_dataset_with_elmo_tokenizer(
+        dataset=dataset, 
+        text_columns=['text'], 
+        max_length=max_length, 
+        lowercase_inputs=lowercase_inputs
+    )
     # TODO: support arbitrary tokenizer (for any model)
     train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
 
@@ -133,7 +143,8 @@ def load_rotten_tomatoes(
 
 
 def load_sst2(
-        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
+        lowercase_inputs: bool = False
     ) -> Tuple[DataLoader, DataLoader]:
     dataset = datasets.load_dataset('glue', 'sst2').shuffle(seed=random_seed)
     if num_examples:
@@ -145,7 +156,8 @@ def load_sst2(
     dataset = prepare_dataset_with_elmo_tokenizer(
         dataset=dataset,
         text_columns=['sentence'],
-        max_length=max_length
+        max_length=max_length,
+        lowercase_inputs=lowercase_inputs
     )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
@@ -163,7 +175,8 @@ def load_sst2(
 
 
 def load_qqp(
-        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42
+        batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
+        lowercase_inputs: bool = False
     ) -> Tuple[DataLoader, DataLoader]:
     dataset = datasets.load_dataset('glue', 'qqp').shuffle(seed=random_seed)
     if num_examples:
@@ -175,7 +188,8 @@ def load_qqp(
     dataset = prepare_dataset_with_elmo_tokenizer(
         dataset=dataset,
         text_columns=['question1', 'question2'],
-        max_length=max_length
+        max_length=max_length,
+        lowercase_inputs=lowercase_inputs
     )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 

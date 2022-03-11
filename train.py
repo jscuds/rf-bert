@@ -35,7 +35,8 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument('--optimizer', type=str, default='sgd', choices=('adam', 'sgd'),
         help='Optimizer to use for training')
-    parser.add_argument('--random_seed', type=int, default=42)
+    parser.add_argument('--random_seed', type=int, default=42,
+        help='set random seed')
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
     parser.add_argument('--epochs_per_model_save', default=3, 
@@ -71,6 +72,11 @@ def get_argparser() -> argparse.ArgumentParser:
         help='dropout probability (0,1] for ELMO embeddings model')
     parser.add_argument('--ft_dropout', type=float, default=0.2,
         help='dropout probability (0,1] for classifier model')
+    parser.add_argument('--neg_samp_ratio', type=float, default=0.5,
+        help=('Proportion [0,1) to use ._corrupt() or ._gen_neg_tuple() for negative samples;'
+              ' 0 exclusively uses ._corrupt() and 1 exclusively uses ._gen_neg_tuple'))
+    parser.add_argument('--synonym_file', type=str, default=None,
+        help='path to synonym file to load, like `synonym-csv/something.csv`')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -87,10 +93,16 @@ def get_argparser() -> argparse.ArgumentParser:
             'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
     parser.add_argument('--model_weights_drop_linear', default=False, action='store_true',
         help='If we are fine-tuning a model that previously had a linear layer, don\'t load the weights for the linear layer')
+    parser.add_argument('--lowercase_inputs', default=False, action='store_true',
+        help='Input sequences are lowercased before conversion to token ids.')
+
+    # W&B arguments: tags & notes
     parser.add_argument('--wandb_tags', nargs='+', default=None,
         help='add list of strings to be used as tags for W&B')
     parser.add_argument('--wandb_notes', type=str, default=None,
         help='pass notes for W&B runs.')
+    parser.add_argument('--wandb_title_add', type=str, default=None,
+        help='add title descriptions to `experiment_model_day_` W&B runs.')
 
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
@@ -143,6 +155,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
     day = time.strftime(f'%Y-%m-%d-%H%M')
     # NOTE(js): `args.model_name[:4]` just grabs "elmo" or "bert"; feel free to change later
     exp_name = f'{args.experiment}_{args.model_name[:4]}_{day}' 
+    if args.wandb_title_add: 
+        exp_name += f'_{args.wandb_title_add}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     config_dict = copy.copy(vars(args))
     config_dict.update({
@@ -154,6 +168,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
         del config_dict['wandb_tags']
     if args.wandb_notes: 
         del config_dict['wandb_notes']
+    if args.wandb_title_add: 
+        del config_dict['wandb_title_add']
     
     wandb.init(
         name=exp_name,
@@ -167,7 +183,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Log to a file and stdout
     Path("logs/").mkdir(exist_ok=True)
     logging.basicConfig(
-        force=True,
         level=logging.INFO,
         handlers=[
             logging.FileHandler(f'logs/{exp_name}.log'),

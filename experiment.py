@@ -150,8 +150,6 @@ class RetrofitExperiment(Experiment):
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
-        r1 = 0.5
-        print('Set r1 =', r1)
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
         # test data from quora 
@@ -162,7 +160,8 @@ class RetrofitExperiment(Experiment):
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
                 max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=r1, seed=self.args.random_seed, split='train'
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             train_dataloader = DataLoader(
                 train_dataset, 
@@ -174,7 +173,8 @@ class RetrofitExperiment(Experiment):
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048), 
                 max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=r1, seed=self.args.random_seed, split='validation'
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             test_dataloader = DataLoader(
                 val_dataset, 
@@ -182,19 +182,27 @@ class RetrofitExperiment(Experiment):
                 drop_last=self.args.drop_last, 
                 pin_memory=torch.cuda.is_available()
             )
-        # create a secomd val_dataset = ParaphraseDatasetElmo() object because mrpc has a train/validation split.
+
         elif  self.args.rf_dataset_name == 'mrpc':
-            val_dataset = ParaphraseDatasetElmo(
+            train_dataset = ParaphraseDatasetElmo(
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=r1, seed=self.args.random_seed, split='validation'
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             train_dataloader = DataLoader(
-                dataset, 
+                train_dataset, 
                 batch_size=self.args.batch_size, 
                 drop_last=self.args.drop_last, 
                 pin_memory=torch.cuda.is_available()
+            )
+            val_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             test_dataloader = DataLoader(
                 val_dataset, 
@@ -239,7 +247,7 @@ class RetrofitExperiment(Experiment):
 
     def compute_and_reset_metrics(self, step: int, epoch: int) -> Dict[str, float]:
         # Override this method to also draw histograms of distances.
-        # self._draw_histograms(step, epoch)
+        self._draw_histograms(step, epoch)
         # Then return the normal result.
         return super().compute_and_reset_metrics(step, epoch)
 
@@ -265,11 +273,11 @@ class RetrofitExperiment(Experiment):
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
         
         # If model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
-        # if self.model.training:
-        #     self.pos_dist_list += positive_pair_distance.tolist()
-        #     self.neg_dist_list += negative_pair_distance.tolist() 
-        #     self.diff_dist_list += (positive_pair_distance - negative_pair_distance).tolist()
-        #     self.diff_dist_plus_margin_list += loss.tolist()
+        if self.model.training:
+            self.pos_dist_list += positive_pair_distance.tolist()
+            self.neg_dist_list += negative_pair_distance.tolist() 
+            self.diff_dist_list += (positive_pair_distance - negative_pair_distance).tolist()
+            self.diff_dist_plus_margin_list += loss.tolist()
 
         loss_pre_clamp = loss.detach().clone()
         loss = loss.clamp(min=0) # shape: (batch_size,)
@@ -302,7 +310,7 @@ class RetrofitExperiment(Experiment):
         assert len(M.shape) == 2
         assert M.shape[0] == M.shape[1]
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-        return torch.norm(I - torch.matmul(M.T, M), p=2)
+        return torch.norm(I - torch.matmul(M.T, M), p=2) # @jxm did this have a major impact compared to 'fro'?
 
     def compute_loss_and_update_metrics(self,
             batch: Tuple[torch.Tensor], metrics_key: str,
@@ -413,28 +421,28 @@ class FinetuneExperiment(Experiment):
         logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
+        logger.warning('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
 
         if self.args.num_examples:
-            logger.warn('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
+            logger.warning('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
 
         if self.args.ft_dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'sst2':
             train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.ft_dataset_name}')

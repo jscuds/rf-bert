@@ -215,7 +215,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
             assert missing_keys == ['classifier.1.weight', 'classifier.1.bias', 'classifier.4.weight', 'classifier.4.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
         # And there should definitely never be any weights we're loading that don't have
         # anywhere to go.
-        assert len(unexpected_keys) == 0
+        if len(unexpected_keys):
+            assert unexpected_keys == ['elmo.scalar_mix_1.gamma', 'elmo.scalar_mix_1.scalar_parameters.0', 'elmo.scalar_mix_1.scalar_parameters.1', 'elmo.scalar_mix_1.scalar_parameters.2', 'elmo.scalar_mix_2.gamma', 'elmo.scalar_mix_2.scalar_parameters.0', 'elmo.scalar_mix_2.scalar_parameters.1', 'elmo.scalar_mix_2.scalar_parameters.2', 'elmo.scalar_mix_3.gamma', 'elmo.scalar_mix_3.scalar_parameters.0', 'elmo.scalar_mix_3.scalar_parameters.1', 'elmo.scalar_mix_3.scalar_parameters.2']
 
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches:

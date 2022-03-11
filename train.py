@@ -41,6 +41,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='number of training epochs')
     parser.add_argument('--epochs_per_model_save', default=3, 
         type=int, help='number of epochs between model saves')
+    parser.add_argument('--save_model_on_eval', default=False, 
+        action='store_true', help='save model on eval step')
     parser.add_argument('--logs_per_epoch', type=int, default=5,
         help='log metrics this number of times per epoch')
     parser.add_argument('--num_examples', type=int, default=None,
@@ -66,8 +68,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
-    parser.add_argument('--elmo_dropout', type=float, default=0,
-        help='dropout probability (0,1] for elmo embeddings model')
+    parser.add_argument('--elmo_dropout', type=float, default=0.1,
+        help='dropout probability (0,1] for ELMO embeddings model')
     parser.add_argument('--ft_dropout', type=float, default=0.2,
         help='dropout probability (0,1] for classifier model')
     parser.add_argument('--neg_samp_ratio', type=float, default=0.5,
@@ -261,8 +263,26 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 # Compute metrics, log, and reset
                 metrics_dict = experiment.compute_and_reset_metrics(step=training_step, epoch=epoch)
                 wandb.log(metrics_dict, step=training_step)
+                # Compute min and max summary for each metric.
+                for metric, val in metrics_dict.items():
+                    min_key = f"{metric}_min"
+                    wandb.run.summary[min_key] = min(
+                        wandb.run.summary.get(min_key, val), val)
+                    max_key = f"{metric}_max"
+                    wandb.run.summary[max_key] = max(
+                        wandb.run.summary.get(max_key, val), val)
                 # Set model back in train mode to resume training
                 experiment.model.train() 
+                # Save model, if specified
+                if args.save_model_on_eval:
+                    checkpoint = {
+                        'step': training_step, 
+                        'model': experiment.model.state_dict()
+                    }
+                    checkpoint_path = os.path.join(
+                        model_folder, f'save_step_{training_step}.pth')   
+                    torch.save(checkpoint, checkpoint_path)
+                    logging.info('Model checkpoint saved to %s after eval at step %d', checkpoint_path, training_step)
             # End of step, increment counter
             training_step += 1
         # End of epoch
@@ -272,7 +292,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 'model': experiment.model.state_dict()
             }
             checkpoint_path = os.path.join(
-                model_folder, f'{epoch}_epochs.pth')   
+                model_folder, f'save_epoch_{epoch}.pth')   
             torch.save(checkpoint, checkpoint_path)
             logging.info('Model checkpoint saved to %s after epoch %d', checkpoint_path, epoch)
             

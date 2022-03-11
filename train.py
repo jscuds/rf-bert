@@ -68,7 +68,7 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
-    parser.add_argument('--elmo_dropout', type=float, default=0.1,
+    parser.add_argument('--elmo_dropout', type=float, default=0.0,
         help='dropout probability (0,1] for ELMO embeddings model')
     parser.add_argument('--ft_dropout', type=float, default=0.2,
         help='dropout probability (0,1] for classifier model')

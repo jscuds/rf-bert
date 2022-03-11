@@ -47,7 +47,7 @@ class TestTableLog:
             test_row_list = list([
                 [0, 0, 'positive', 'What are the best examples of the golden ratio in everyday life ?', 'Can you give some unknown examples of the golden ratio in our daily life that not everyone knows ?', 'life', 'train'],
                 [0, 0, 'negative', 'What is the Lewis structure of PBR3 ? How is it determined ?', 'What is the Lewis structure for KrF2 ? How is it determined ?', 'structure', 'train'],
-                [0, 0, 'positive', 'What are the best examples of the golden ratio in everyday life ?', 'Can you give some unknown examples of the golden ratio in our daily life that not everyone knows ?', 'golden', 'validation'],
+                [0, 0, 'positive', 'What are the best examples of the golden ratio in everyday life ?', 'Can you give some unknown examples of the golden ratio in our daily life that not everyone knows ?', 'examples', 'validation'],
                 [0, 0, 'negative', 'What is the Lewis structure of PBR3 ? How is it determined ?', 'What is the Lewis structure for KrF2 ? How is it determined ?', 'structure', 'validation']
             ])
 
@@ -60,3 +60,7 @@ class TestTableLog:
             for i,data_row in enumerate(experiment.wb_table.final_table.data):
                 assert data_row[:6] == test_row_list[i][:6]
                 assert data_row[-1] == test_row_list[i][-1]
+
+if __name__ == '__main__':
+    t = TestTableLog()
+    t.test_wb_table_final_data()

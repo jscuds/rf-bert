@@ -230,7 +230,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
             assert missing_keys == ['classifier.1.weight', 'classifier.1.bias', 'classifier.4.weight', 'classifier.4.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
         # And there should definitely never be any weights we're loading that don't have
         # anywhere to go.
-        assert len(unexpected_keys) == 0
+        if len(unexpected_keys):
+            assert unexpected_keys == ['elmo.scalar_mix_1.gamma', 'elmo.scalar_mix_1.scalar_parameters.0', 'elmo.scalar_mix_1.scalar_parameters.1', 'elmo.scalar_mix_1.scalar_parameters.2', 'elmo.scalar_mix_2.gamma', 'elmo.scalar_mix_2.scalar_parameters.0', 'elmo.scalar_mix_2.scalar_parameters.1', 'elmo.scalar_mix_2.scalar_parameters.2', 'elmo.scalar_mix_3.gamma', 'elmo.scalar_mix_3.scalar_parameters.0', 'elmo.scalar_mix_3.scalar_parameters.1', 'elmo.scalar_mix_3.scalar_parameters.2']
 
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches:
@@ -241,6 +242,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
     epoch_start_time = time.time()
     training_step = 0
+    # TODO: Optionally run an eval step before training starts (to get the model
+    # stats before any weights are changed)
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
         for epoch_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):

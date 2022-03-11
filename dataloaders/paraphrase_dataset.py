@@ -39,6 +39,7 @@ class ParaphraseDatasetBert(Dataset):
         self.max_length = max_length
         self.r1 = r1 # negative sample ratio
         self.seed = seed # set to None for random
+        random.seed(self.seed)
 
         # TODO do these only apply to 'quora'? if so --> move into self._load_dataset
         # TODO combine self._token_pair_to_neg_tuples and self._neg_tuples because the former references the latter?
@@ -60,7 +61,7 @@ class ParaphraseDatasetBert(Dataset):
         self._gen_stop_words(stop_words_file)
 
         # load quora, mrpc, etc.
-        logger.info(f'Loading {para_dataset} dataset...\n')
+        logger.info('Loading %s dataset with r1=%d...\n', para_dataset, r1)
         self._load_dataset()
 
     def __len__(self) -> int:
@@ -68,16 +69,16 @@ class ParaphraseDatasetBert(Dataset):
 
     # based on Shi's gen_batch
     def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, int, int, int, int]:
-        
+        # find a non-paraphrase pair of sentences that share the same word.
         neg_tuple = self._gen_neg_tuple(self._para_tuples[idx])
-        random.seed(self.seed)
         if (random.uniform(0,1) > self.r1) or (neg_tuple is None):
+            # find a random sentence in the dataset that also shares the same word.
             neg_tuple = self._corrupt(self._para_tuples[idx])
             
-        sent1 = self._id_to_sent[ self._para_tuples[idx][0] ] # tensor of char representations of tokens / shape [1,max_length,50]
-        sent2 = self._id_to_sent[ self._para_tuples[idx][1] ] 
-        nsent1 = self._id_to_sent[ neg_tuple[0] ] 
-        nsent2 = self._id_to_sent[ neg_tuple[1] ] 
+        sent1 = self._id_to_sent[self._para_tuples[idx][0]] # tensor of char representations of tokens / shape [1,max_length,50]
+        sent2 = self._id_to_sent[self._para_tuples[idx][1]] 
+        nsent1 = self._id_to_sent[neg_tuple[0]] 
+        nsent2 = self._id_to_sent[neg_tuple[1]]
         token1 = self._para_tuples[idx][2] # shared word index in sent1
         token2 = self._para_tuples[idx][3] # shared word index in sent2
         ntoken1 = neg_tuple[2] # shared word index in nsent1
@@ -287,7 +288,7 @@ class ParaphraseDatasetBert(Dataset):
                 # logger.info("ind", ind)
                 random.choice(self._neg_tuples)     # if there isn't a non-paraphrase: randomly return a negative tuple:
                 break                                   
-        return (corrupt_s[0],target_sent_id,corrupt_s[1], target_sent_index)
+        return (corrupt_s[0], target_sent_id,corrupt_s[1], target_sent_index)
 
 
     def _gen_stop_words(self, filename: str) -> Set[int]:
@@ -376,11 +377,15 @@ class ParaphraseDatasetElmo(Dataset):
         self._neg_tuples:  List[Tuple[int,int,int,int]] = [] # [(sent1_id, sent2_id, sent1_index_of_an_overlapping/synonym_token, sent2_index_of_an_overlapping/synonym_token), ... ]
         
         #elmo_change: any token_id is an `int` in BERT, but a `tensor` w/  shape [50]  cast to a tuple w/ len=50
-        self._token_pair_to_neg_tuples: Dict[Tuple[Tuple[int,...],Tuple[int,...]],Set[int]] = {} # maps pair of word_token_ids to their index position in self._neg_tuples; {(token_id, token_id) : set([idx of self._neg_tuples, ...])}
+        self._token_pair_to_neg_tuples: Dict[Tuple[Tuple[int,...],Tuple[int, ...]],Set[int]] = {} # maps pair of word_token_ids to their index position in self._neg_tuples; {(token_id, token_id) : set([idx of self._neg_tuples, ...])}
         self._token_to_sents: Dict[Tuple[int,...],Set[Tuple[int,int]]] = {} # reverse index of sentences given tokens. This is a map {token_id : set([(sent_id, index_of_the_token_in_the_sentence), ...]) }
         
         #elmo_change
-        self.tokenizer = MosesTokenizer('en', no_escape=True)
+        self.moses_tokenizer = MosesTokenizer('en', no_escape=True)
+        if self.lowercase_inputs:
+            self.tokenizer = lambda s: self.moses_tokenizer(s.lower())
+        else:
+            self.tokenizer = lambda s: self.moses_tokenizer(s)
 
         # load stop words from file
         self.bad_words = ["-LSB-", "\\", "``", "-LRB-", "????", "n/a", "'"] #, "//" #js add if you want to filter out some URLs
@@ -397,7 +402,7 @@ class ParaphraseDatasetElmo(Dataset):
         # self.TEST_SYNS = []
 
         # load quora, mrpc, etc.
-        logger.info(f'Loading {para_dataset} dataset...\n')
+        logger.info('Loading %s dataset with r1=%d...\n', para_dataset, r1)
         self._load_dataset()
 
     def __len__(self) -> int:
@@ -405,13 +410,10 @@ class ParaphraseDatasetElmo(Dataset):
 
     # based on Shi's gen_batch
     def __getitem__(self, idx: int) -> Tuple[Tensor, Tensor, Tensor, Tensor, int, int, int, int]:
-        
         neg_tuple = self._gen_neg_tuple(self._para_tuples[idx])
-        random.seed(self.seed)
         if (random.uniform(0,1) > self.r1) or (neg_tuple is None):
             neg_tuple = self._corrupt(self._para_tuples[idx])
             
-        #TODO: instead of token_ids, these will be tensors of length 50...problematic?
         sent1 = self._id_to_sent[ self._para_tuples[idx][0] ] # tuple of char ids / len [self.max_length*50]
         sent2 = self._id_to_sent[ self._para_tuples[idx][1] ] 
         nsent1 = self._id_to_sent[ neg_tuple[0] ] 
@@ -434,11 +436,11 @@ class ParaphraseDatasetElmo(Dataset):
 
         # load quora or mrpc from HuggingFace
         if self.para_dataset == 'quora':
-            dataset = datasets.load_dataset('quora')
+            dataset = datasets.load_dataset('glue', 'qqp')
             dataset_shuffled = dataset.shuffle(seed=self.seed)
             self._process_dataset(dataset_shuffled)
         elif self.para_dataset == 'mrpc':
-            dataset = datasets.load_dataset('glue','mrpc')
+            dataset = datasets.load_dataset('glue', 'mrpc')
             dataset_shuffled = dataset.shuffle(seed=self.seed)
             self._process_dataset(dataset_shuffled)
 
@@ -454,11 +456,11 @@ class ParaphraseDatasetElmo(Dataset):
             if (self.num_examples is not None) and count >= self.num_examples:
                 break
             if self.para_dataset == 'quora':
-                label = pair['is_duplicate']
-                s1_id = pair['questions']['id'][0]
-                s2_id = pair['questions']['id'][1]
-                s1 = pair['questions']['text'][0]
-                s2 = pair['questions']['text'][1]
+                label = pair['label']
+                s1_id = pair['idx']*10
+                s2_id = pair['idx']*10 + 1
+                s1 = pair['question1']
+                s2 = pair['question2']
 
             elif self.para_dataset == 'mrpc':
                 label = pair['label']
@@ -548,7 +550,8 @@ class ParaphraseDatasetElmo(Dataset):
                     w1 = self._tensor_to_token_tuples(s1_tokenized[:,p[0],:]) # original w1 & w2 shape: [1,1,50]
                     w2 = self._tensor_to_token_tuples(s2_tokenized[:,p[1],:]) # new w1 & w2 len = 50
 
-
+                    # TODO: we should lowercase words before checking stopwords
+                    # @jxm, the `_gen_stop_words()` method adds a capital version of all words if --lowercase_inputs=False
                     #js filter out stopwords from negative sentences
                     #  stopwords are filtered out of pos sentences in self.overlap_()
                     if w1 in self.stop_words_set or w2 in self.stop_words_set:
@@ -733,6 +736,7 @@ class ParaphraseDatasetElmo(Dataset):
         # a set of of tuples representing the length-50 ELMo char_ids
         self.stop_words_set = stop_words_set
 
+        
     def _gen_synonyms(self, filename: str) -> Dict[Tuple[int,...], Set[Tuple[int,...]]]:
         """
         Generates a dictionary mapping a token_id tuple to a set of its synonyms.
@@ -785,12 +789,11 @@ class ParaphraseDatasetElmo(Dataset):
         # base_words += [token.capitalize() for token in base_words]
 
 
-    def _gen_neg_tuple(self, para_tuple: Tuple[int,int,int,int]) -> Optional[Tuple[int,int,int,int]]:
+    def _gen_neg_tuple(self, para_tuple: Tuple[int, int, int, int]) -> Optional[Tuple[int, int, int, int]]:
         """
         Given a paraphrase tuple, find a non-paraphrase pair of sentences that share the same word.
         NOTE: this is different than _corrupt() because corrupt() finds a random other sentence that shares a word.
         """
-
         s1_id = para_tuple[0]
         s1_index = para_tuple[2]
         s2_id = para_tuple[1]

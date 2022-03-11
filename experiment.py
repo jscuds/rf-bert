@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import (
-    load_rotten_tomatoes, load_qqp, load_sst2, train_test_split
+    load_rotten_tomatoes, load_qqp, load_sst2
 )
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
@@ -131,7 +131,6 @@ class RetrofitExperiment(Experiment):
         self.args = args
         self.model = (
             ElmoRetrofit(
-                num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
                 elmo_dropout=args.elmo_dropout,
             ).to(device)
@@ -151,39 +150,59 @@ class RetrofitExperiment(Experiment):
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
-        dataset = ParaphraseDatasetElmo(
-            self.args.rf_dataset_name,
-            model_name='elmo', num_examples=self.args.num_examples, 
-            max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
-            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
-
-        )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
         # test data from quora 
         #
         # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
         if self.args.rf_dataset_name == 'quora':
-            train_dataloader, test_dataloader = train_test_split(
-                dataset, batch_size=self.args.batch_size, 
-                shuffle=True, drop_last=self.args.drop_last, 
-                train_split=self.args.train_test_split
-            )
-        # create a secomd val_dataset = ParaphraseDatasetElmo() object because mrpc has a train/validation split.
-        elif  self.args.rf_dataset_name == 'mrpc':
-            val_dataset = ParaphraseDatasetElmo(
+            train_dataset = ParaphraseDatasetElmo(
                 self.args.rf_dataset_name,
                 model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
                 lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             train_dataloader = DataLoader(
-                dataset, 
+                train_dataset, 
                 batch_size=self.args.batch_size, 
                 drop_last=self.args.drop_last, 
                 pin_memory=torch.cuda.is_available()
+            )
+            val_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048), 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+            )
+            test_dataloader = DataLoader(
+                val_dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
+            )
+
+        elif  self.args.rf_dataset_name == 'mrpc':
+            train_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+            )
+            train_dataloader = DataLoader(
+                train_dataset, 
+                batch_size=self.args.batch_size, 
+                drop_last=self.args.drop_last, 
+                pin_memory=torch.cuda.is_available()
+            )
+            val_dataset = ParaphraseDatasetElmo(
+                self.args.rf_dataset_name,
+                model_name='elmo', num_examples=self.args.num_examples, 
+                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
             )
             test_dataloader = DataLoader(
                 val_dataset, 
@@ -291,7 +310,7 @@ class RetrofitExperiment(Experiment):
         assert len(M.shape) == 2
         assert M.shape[0] == M.shape[1]
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-        return torch.norm(I - torch.matmul(M.T, M), p='fro')
+        return torch.norm(I - torch.matmul(M.T, M), p=2) # @jxm did this have a major impact compared to 'fro'?
 
     def compute_loss_and_update_metrics(self,
             batch: Tuple[torch.Tensor], metrics_key: str,
@@ -390,7 +409,7 @@ class FinetuneExperiment(Experiment):
         # TODO: argparse for scheduler hyperparams.
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5,
-            patience=8, min_lr=1e-6
+            patience=1, min_lr=1e-6
         )
 
     def step_lr_scheduler(self):

@@ -310,7 +310,9 @@ class RetrofitExperiment(Experiment):
         assert len(M.shape) == 2
         assert M.shape[0] == M.shape[1]
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-        return torch.norm(I - torch.matmul(M.T, M), p=2) # @jxm did this have a major impact compared to 'fro'?
+        return torch.norm(I - torch.matmul(M.T, M), p=2) # p=2 produces same result as p='fro':
+        # https://pytorch.org/docs/stable/generated/torch.norm.html
+        # "Frobenius norm produces the same result as p=2 in all cases except when dim is a list of three or more dims, in which case Frobenius norm throws an error.""
 
     def compute_loss_and_update_metrics(self,
             batch: Tuple[torch.Tensor], metrics_key: str,

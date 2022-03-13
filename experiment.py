@@ -155,61 +155,35 @@ class RetrofitExperiment(Experiment):
         # test data from quora 
         #
         # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
-        if self.args.rf_dataset_name == 'quora':
-            train_dataset = ParaphraseDatasetElmo(
-                self.args.rf_dataset_name,
-                model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
-                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
-            )
-            train_dataloader = DataLoader(
-                train_dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
-            val_dataset = ParaphraseDatasetElmo(
-                self.args.rf_dataset_name,
-                model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048), 
-                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
-                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
-            )
-            test_dataloader = DataLoader(
-                val_dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
 
-        elif  self.args.rf_dataset_name == 'mrpc':
-            train_dataset = ParaphraseDatasetElmo(
-                self.args.rf_dataset_name,
-                model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
-                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
-            )
-            train_dataloader = DataLoader(
-                train_dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
-            val_dataset = ParaphraseDatasetElmo(
-                self.args.rf_dataset_name,
-                model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
-                r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
-                lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
-            )
-            test_dataloader = DataLoader(
-                val_dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
+        train_dataset = ParaphraseDatasetElmo(
+            self.args.rf_dataset_name,
+            model_name='elmo', num_examples=self.args.num_examples, 
+            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
+            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+        )
+        train_dataloader = DataLoader(
+            train_dataset, 
+            batch_size=self.args.batch_size, 
+            shuffle=True, 
+            drop_last=self.args.drop_last, 
+            pin_memory=torch.cuda.is_available()
+        )
+        val_dataset = ParaphraseDatasetElmo(
+            self.args.rf_dataset_name,
+            model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048),  # mrpc's val set is length 408, so it will get 408 examples
+            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+        )
+        test_dataloader = DataLoader(
+            val_dataset, 
+            batch_size=self.args.batch_size, 
+            shuffle=True, 
+            drop_last=self.args.drop_last, 
+            pin_memory=torch.cuda.is_available()
+        )
         
         # if we're tracking examples for a table, setup the table configuration
         if self.args.num_table_examples is not None:

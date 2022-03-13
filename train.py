@@ -11,7 +11,6 @@ import numpy as np
 import torch
 import tqdm
 import wandb
-from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
 

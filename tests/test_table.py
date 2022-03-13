@@ -47,7 +47,7 @@ class TestTableLog:
             test_row_list = list([
                 [0, 0, 'positive', 'Where can I get india vs spain davis cup 2016 tickets ?', 'How can I get tickets for the India Spain Davis Cup fixtures ?', 'tickets', 'train'],
                 [0, 0, 'negative', 'What are the pros and cons of being a driver for Uber or Lyft in Philadelphia ?', 'What are the pros and cons of being a driver for Uber or Lyft in Seattle ?', 'Uber', 'train'],
-                [0, 0, 'positive', 'How can I begin a successful project ?', 'How do I start a successful project ?', 'successful', 'validation'],
+                [0, 0, 'positive', 'How can I begin a successful project ?', 'How do I start a successful project ?', 'project', 'validation'],
                 [0, 0, 'negative', 'What is the minimum wage in singapore ?', 'What is the minimum wage for IT sales in Singapore ?', 'minimum', 'validation']
             ])
 

@@ -170,7 +170,12 @@ def run_training_loop(args: argparse.Namespace) -> str:
     if args.wandb_title_add: 
         del config_dict['wandb_title_add']
     
+    # added `settings` based on `wandb.errors.UsageError: Error communicating with wandb process`
+    #     try: wandb.init(settings=wandb.Settings(start_method='fork'))
+    #     or:  wandb.init(settings=wandb.Settings(start_method='thread'))
+    # For more info see: https://docs.wandb.ai/library/init#init-start-error
     wandb.init(
+        settings=wandb.Settings(start_method='fork'),
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
         entity=os.environ.get('WANDB_ENTITY', 'jscuds'),

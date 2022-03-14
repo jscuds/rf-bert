@@ -45,10 +45,10 @@ class TestTableLog:
         if experiment.wb_table is not None:
             test_column_list = ['epoch', 'index', 'positive/negative', 'sent1', 'sent2', 'shared_word', 'word_distance', 'hinge_loss', 'split']
             test_row_list = list([
-                [0, 0, 'positive', 'What are the best examples of the golden ratio in everyday life ?', 'Can you give some unknown examples of the golden ratio in our daily life that not everyone knows ?', 'life', 'train'],
-                [0, 0, 'negative', 'What is the Lewis structure of PBR3 ? How is it determined ?', 'What is the Lewis structure for KrF2 ? How is it determined ?', 'structure', 'train'],
-                [0, 0, 'positive', 'What are the best examples of the golden ratio in everyday life ?', 'Can you give some unknown examples of the golden ratio in our daily life that not everyone knows ?', 'golden', 'validation'],
-                [0, 0, 'negative', 'What is the Lewis structure of PBR3 ? How is it determined ?', 'What is the Lewis structure for KrF2 ? How is it determined ?', 'structure', 'validation']
+                [0, 0, 'positive', 'Where can I get india vs spain davis cup 2016 tickets ?', 'How can I get tickets for the India Spain Davis Cup fixtures ?', 'tickets', 'train'],
+                [0, 0, 'negative', 'What are the pros and cons of being a driver for Uber or Lyft in Philadelphia ?', 'What are the pros and cons of being a driver for Uber or Lyft in Seattle ?', 'Uber', 'train'],
+                [0, 0, 'positive', 'How can I begin a successful project ?', 'How do I start a successful project ?', 'project', 'validation'],
+                [0, 0, 'negative', 'What is the minimum wage in singapore ?', 'What is the minimum wage for IT sales in Singapore ?', 'minimum', 'validation']
             ])
 
             # Check columns of table

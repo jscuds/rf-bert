@@ -11,7 +11,6 @@ import numpy as np
 import torch
 import tqdm
 import wandb
-from torch.utils.data import DataLoader
 
 from experiment import FinetuneExperiment, RetrofitExperiment
 
@@ -35,7 +34,8 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument('--optimizer', type=str, default='sgd', choices=('adam', 'sgd'),
         help='Optimizer to use for training')
-    parser.add_argument('--random_seed', type=int, default=42)
+    parser.add_argument('--random_seed', type=int, default=42,
+        help='set random seed')
     parser.add_argument('--epochs', type=int, default=5,
         help='number of training epochs')
     parser.add_argument('--epochs_per_model_save', default=3, 
@@ -67,10 +67,15 @@ def get_argparser() -> argparse.ArgumentParser:
         help='gamma - margin constant for retrofitting loss')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
-    parser.add_argument('--elmo_dropout', type=float, default=0.1,
+    parser.add_argument('--elmo_dropout', type=float, default=0.0,
         help='dropout probability (0,1] for ELMO embeddings model')
     parser.add_argument('--ft_dropout', type=float, default=0.2,
         help='dropout probability (0,1] for classifier model')
+    parser.add_argument('--neg_samp_ratio', type=float, default=0.5,
+        help=('Proportion [0,1) to use ._corrupt() or ._gen_neg_tuple() for negative samples;'
+              ' 0 exclusively uses ._corrupt() and 1 exclusively uses ._gen_neg_tuple'))
+    parser.add_argument('--synonym_file', type=str, default=None,
+        help='path to synonym file to load, like `synonym-csv/something.csv`')
 
     # for these boolean arguments, append the flag if you want it to be `True`
     #     otherwise, omit the flag if you want it to be False
@@ -87,10 +92,16 @@ def get_argparser() -> argparse.ArgumentParser:
             'previously retrofitted, so we can load the model with the proper architecture (i.e. including M matrix)'))
     parser.add_argument('--model_weights_drop_linear', default=False, action='store_true',
         help='If we are fine-tuning a model that previously had a linear layer, don\'t load the weights for the linear layer')
+    parser.add_argument('--lowercase_inputs', default=False, action='store_true',
+        help='Input sequences are lowercased before conversion to token ids.')
+
+    # W&B arguments: tags & notes
     parser.add_argument('--wandb_tags', nargs='+', default=None,
         help='add list of strings to be used as tags for W&B')
     parser.add_argument('--wandb_notes', type=str, default=None,
         help='pass notes for W&B runs.')
+    parser.add_argument('--wandb_title_add', type=str, default=None,
+        help='add title descriptions to `experiment_model_day_` W&B runs.')
 
 
     # TODO add dataset so we can switch between 'quora', 'mrpc'...
@@ -143,6 +154,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
     day = time.strftime(f'%Y-%m-%d-%H%M')
     # NOTE(js): `args.model_name[:4]` just grabs "elmo" or "bert"; feel free to change later
     exp_name = f'{args.experiment}_{args.model_name[:4]}_{day}' 
+    if args.wandb_title_add: 
+        exp_name += f'_{args.wandb_title_add}'
     # WandB init and config (based on argument dictionaries in imports/globals cell)
     config_dict = copy.copy(vars(args))
     config_dict.update({
@@ -154,8 +167,15 @@ def run_training_loop(args: argparse.Namespace) -> str:
         del config_dict['wandb_tags']
     if args.wandb_notes: 
         del config_dict['wandb_notes']
+    if args.wandb_title_add: 
+        del config_dict['wandb_title_add']
     
+    # added `settings` based on `wandb.errors.UsageError: Error communicating with wandb process`
+    #     try: wandb.init(settings=wandb.Settings(start_method='fork'))
+    #     or:  wandb.init(settings=wandb.Settings(start_method='thread'))
+    # For more info see: https://docs.wandb.ai/library/init#init-start-error
     wandb.init(
+        settings=wandb.Settings(start_method='fork'),
         name=exp_name,
         project=os.environ.get('WANDB_PROJECT', 'rf-bert'),
         entity=os.environ.get('WANDB_ENTITY', 'jscuds'),
@@ -167,7 +187,6 @@ def run_training_loop(args: argparse.Namespace) -> str:
     # Log to a file and stdout
     Path("logs/").mkdir(exist_ok=True)
     logging.basicConfig(
-        force=True,
         level=logging.INFO,
         handlers=[
             logging.FileHandler(f'logs/{exp_name}.log'),
@@ -215,7 +234,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
             assert missing_keys == ['classifier.1.weight', 'classifier.1.bias', 'classifier.4.weight', 'classifier.4.bias'], "unknown missing keys. Maybe you forgot the --finetune_rf argument?"
         # And there should definitely never be any weights we're loading that don't have
         # anywhere to go.
-        assert len(unexpected_keys) == 0
+        if len(unexpected_keys):
+            assert unexpected_keys == ['elmo.scalar_mix_1.gamma', 'elmo.scalar_mix_1.scalar_parameters.0', 'elmo.scalar_mix_1.scalar_parameters.1', 'elmo.scalar_mix_1.scalar_parameters.2', 'elmo.scalar_mix_2.gamma', 'elmo.scalar_mix_2.scalar_parameters.0', 'elmo.scalar_mix_2.scalar_parameters.1', 'elmo.scalar_mix_2.scalar_parameters.2', 'elmo.scalar_mix_3.gamma', 'elmo.scalar_mix_3.scalar_parameters.0', 'elmo.scalar_mix_3.scalar_parameters.1', 'elmo.scalar_mix_3.scalar_parameters.2']
 
     # use wandb.watch() to track gradients
     # watch_log_freq is setup to log every 10 batches:
@@ -226,6 +246,8 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
     epoch_start_time = time.time()
     training_step = 0
+    # TODO: Optionally run an eval step before training starts (to get the model
+    # stats before any weights are changed)
     for epoch in range(args.epochs):
         logger.info(f"Starting training epoch {epoch+1}/{args.epochs}")
         for epoch_step, train_batch in tqdm.tqdm(enumerate(train_dataloader), total=len(train_dataloader), desc='Training', leave=False):

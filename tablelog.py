@@ -50,12 +50,10 @@ class TableLog:
             key = (epoch,i,split)
             # Populate positive example dictionaries
             self.table_pos_sent1_str[key], self.table_pos_sent2_str[key] = elmo_sentence_decode(pos_sent_1[i]), elmo_sentence_decode(pos_sent_2[i]) # get string representations of sentences
-            assert self.table_pos_sent1_str[key].split(' ')[pos_token_1[i].item()] == self.table_pos_sent2_str[key].split(' ')[pos_token_2[i].item()] # assert that the word is the same in both pos_sent1 & pos_sent2
             self.table_pos_target_word[key] = self.table_pos_sent1_str[key].split(' ')[pos_token_1[i].item()]
 
             # Populate negative example dictionaries
             self.table_neg_sent1_str[key], self.table_neg_sent2_str[key] = elmo_sentence_decode(neg_sent_1[i]), elmo_sentence_decode(neg_sent_2[i]) # get string representations of sentence 2
-            assert self.table_neg_sent1_str[key].split(' ')[neg_token_1[i].item()] == self.table_neg_sent2_str[key].split(' ')[neg_token_2[i].item()] # assert that the word is the same in both pos_sent1 & pos_sent2
             self.table_neg_target_word[key] = self.table_neg_sent1_str[key].split(' ')[neg_token_1[i].item()]
 
 

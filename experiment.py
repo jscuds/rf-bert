@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from dataloaders import ParaphraseDatasetElmo
 from dataloaders.helpers import (
-    load_rotten_tomatoes, load_qqp, load_sst2, train_test_split
+    load_rotten_tomatoes, load_qqp, load_sst2
 )
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
@@ -131,7 +131,6 @@ class RetrofitExperiment(Experiment):
         self.args = args
         self.model = (
             ElmoRetrofit(
-                num_output_representations = 1, 
                 requires_grad=args.req_grad_elmo, #default = False --> Frozen
                 elmo_dropout=args.elmo_dropout,
             ).to(device)
@@ -151,43 +150,40 @@ class RetrofitExperiment(Experiment):
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
         # TODO: pass proper args to ParaphaseDataset
-        dataset = ParaphraseDatasetElmo(
-            self.args.rf_dataset_name,
-            model_name='elmo', num_examples=self.args.num_examples, 
-            max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-            r1=0.5, seed=self.args.random_seed, split='train'
-        )
         # Quora doesn't have a test split, so we have to do this?
         # @js - is this right? Otherwise we should be using the actual
         # test data from quora 
         #
         # @jxm - I think we decided to use quora for retrofitting, qqp for GLUE tasks
-        if self.args.rf_dataset_name == 'quora':
-            train_dataloader, test_dataloader = train_test_split(
-                dataset, batch_size=self.args.batch_size, 
-                shuffle=True, drop_last=self.args.drop_last, 
-                train_split=self.args.train_test_split
-            )
-        # create a secomd val_dataset = ParaphraseDatasetElmo() object because mrpc has a train/validation split.
-        elif  self.args.rf_dataset_name == 'mrpc':
-            val_dataset = ParaphraseDatasetElmo(
-                self.args.rf_dataset_name,
-                model_name='elmo', num_examples=self.args.num_examples, 
-                max_length=self.args.max_length, stop_words_file=f'stop_words_en.txt',
-                r1=0.5, seed=self.args.random_seed, split='validation'
-            )
-            train_dataloader = DataLoader(
-                dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
-            test_dataloader = DataLoader(
-                val_dataset, 
-                batch_size=self.args.batch_size, 
-                drop_last=self.args.drop_last, 
-                pin_memory=torch.cuda.is_available()
-            )
+
+        train_dataset = ParaphraseDatasetElmo(
+            self.args.rf_dataset_name,
+            model_name='elmo', num_examples=self.args.num_examples, 
+            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='train',
+            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+        )
+        train_dataloader = DataLoader(
+            train_dataset, 
+            batch_size=self.args.batch_size, 
+            shuffle=True, 
+            drop_last=self.args.drop_last, 
+            pin_memory=torch.cuda.is_available()
+        )
+        val_dataset = ParaphraseDatasetElmo(
+            self.args.rf_dataset_name,
+            model_name='elmo', num_examples=min(self.args.num_examples or 2_048, 2_048),  # mrpc's val set is length 408, so it will get 408 examples
+            max_length=self.args.max_length, stop_words_file='stop_words_en.txt',
+            r1=self.args.neg_samp_ratio, seed=self.args.random_seed, split='validation',
+            lowercase_inputs=self.args.lowercase_inputs, synonym_file=self.args.synonym_file
+        )
+        test_dataloader = DataLoader(
+            val_dataset, 
+            batch_size=self.args.batch_size, 
+            shuffle=True, 
+            drop_last=self.args.drop_last, 
+            pin_memory=torch.cuda.is_available()
+        )
         
         # if we're tracking examples for a table, setup the table configuration
         if self.args.num_table_examples is not None:
@@ -288,7 +284,9 @@ class RetrofitExperiment(Experiment):
         assert len(M.shape) == 2
         assert M.shape[0] == M.shape[1]
         I = torch.eye(M.shape[0], dtype=float).to(M.device) 
-        return torch.norm(I - torch.matmul(M.T, M), p='fro')
+        return torch.norm(I - torch.matmul(M.T, M), p=2) # p=2 produces same result as p='fro':
+        # https://pytorch.org/docs/stable/generated/torch.norm.html
+        # "Frobenius norm produces the same result as p=2 in all cases except when dim is a list of three or more dims, in which case Frobenius norm throws an error.""
 
     def compute_loss_and_update_metrics(self,
             batch: Tuple[torch.Tensor], metrics_key: str,
@@ -387,7 +385,7 @@ class FinetuneExperiment(Experiment):
         # TODO: argparse for scheduler hyperparams.
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=0.5,
-            patience=8, min_lr=1e-6
+            patience=1, min_lr=1e-6
         )
 
     def step_lr_scheduler(self):
@@ -399,28 +397,28 @@ class FinetuneExperiment(Experiment):
         logging.info('[step_lr_scheduler] Learning rate = %f', get_lr(self.optimizer))
     
     def get_dataloaders(self) -> Tuple[DataLoader, DataLoader]:
-        logger.warn('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
+        logger.warning('Loading a fine-tuning dataset with a pre-defined test set so ignoring --train_test_split arg if set.')
 
         if self.args.num_examples:
-            logger.warn('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
+            logger.warning('--num_examples set so restricting dataset sizes to %d', self.args.num_examples)
 
         if self.args.ft_dataset_name == 'qqp':
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         elif self.args.ft_dataset_name == 'sst2':
             train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.ft_dataset_name}')

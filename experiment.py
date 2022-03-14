@@ -366,7 +366,8 @@ class FinetuneExperiment(Experiment):
         assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair", "bert-base-cased"}
         self.args = args
 
-        if self.model.startswith("elmo"):
+        # TODO: support different numbers of labels, depending on the dataset.
+        if args.model_name.startswith("elmo"):
             self.model = (
                 ElmoClassifier(
                     num_output_representations=1, 
@@ -378,9 +379,12 @@ class FinetuneExperiment(Experiment):
                     elmo_dropout=args.elmo_dropout
                 )
             ).to(device)
+            self.tokenizer = None
         else:
-            # TODO: argparse for num. labels?
-            self.model = transformers.AutoModelForSequenceClassification.from_pretrained(args.model_nam, num_labels=1)
+            self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
+                args.model_name, num_labels=1)
+            self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+                args.model_name)
             
         self.create_optimizer_and_lr_scheduler(args)
         self._loss_fn = torch.nn.BCELoss()

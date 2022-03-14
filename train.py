@@ -246,6 +246,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
 
     epoch_start_time = time.time()
     training_step = 0
+    first_test_batch = True
     # TODO: Optionally run an eval step before training starts (to get the model
     # stats before any weights are changed)
     for epoch in range(args.epochs):
@@ -261,9 +262,11 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 experiment.model.eval() # set model in eval mode for evaluation
                 # Compute eval metrics every `log_interval` batches
                 with torch.no_grad():
-                    for test_batch in tqdm.tqdm(test_dataloader, total=len(test_dataloader), desc='Evaluating', leave=False):
+                    for test_step, test_batch in tqdm.tqdm(enumerate(test_dataloader), total=len(test_dataloader), desc='Evaluating', leave=False):
                         experiment.compute_loss_and_update_metrics(
-                            test_batch, metrics_key='Test', epoch=epoch, is_first_batch=is_first_batch)
+                            test_batch, metrics_key='Test', epoch=epoch, is_first_batch=(test_step == 0 and first_test_batch))
+                # After first validation examples are logged in this epoch, set to False
+                first_test_batch = False
                 # Advance learning rate scheduler (if there is one) after validation.
                 # (Note: we have to do this *before* logging metrics so test loss is not zero.)
                 experiment.step_lr_scheduler()
@@ -292,6 +295,7 @@ def run_training_loop(args: argparse.Namespace) -> str:
                     logging.info('Model checkpoint saved to %s after eval at step %d', checkpoint_path, training_step)
             # End of step, increment counter
             training_step += 1
+        
         # End of epoch
         if (epoch+1) % args.epochs_per_model_save == 0:
             checkpoint = {
@@ -302,7 +306,9 @@ def run_training_loop(args: argparse.Namespace) -> str:
                 model_folder, f'save_epoch_{epoch}.pth')   
             torch.save(checkpoint, checkpoint_path)
             logging.info('Model checkpoint saved to %s after epoch %d', checkpoint_path, epoch)
-            
+        
+        # Reset bool for pulling wb_table examples for 'validation'
+        first_test_batch = True
         # Log elapsed time at end of each epoch    
         epoch_end_time = time.time()
         logger.info(f"\nEpoch {epoch+1}/{args.epochs} Total EPOCH Time: {(epoch_end_time-epoch_start_time)/60:>0.2f} min")

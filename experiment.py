@@ -6,17 +6,14 @@ import logging
 
 import torch
 from torch.utils.data import DataLoader, Dataset
+import transformers
 
 from dataloaders import ParaphraseDatasetElmo
-from dataloaders.helpers import (
-    load_rotten_tomatoes, load_qqp, load_sst2
-)
+from dataloaders.helpers import load_rotten_tomatoes, load_qqp, load_sst2
 from metrics import Metric, Accuracy, PrecisionRecallF1
 from models import ElmoClassifier, ElmoRetrofit
 from tablelog import TableLog
-from utils import (
-    TensorRunningAverages, log_wandb_histogram, blue_text, yellow_text, get_lr
-)
+from utils import TensorRunningAverages, log_wandb_histogram, blue_text, yellow_text, get_lr
 
 
 Metric = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -352,8 +349,9 @@ class FinetuneExperiment(Experiment):
     """Configures experiments for fine-tuning models, typically for
     classification-based tasks like those from the GLUE benchmark.
     """
+    model_name: str
     model: torch.nn.Module
-    tokenizer: Callable
+    tokenizer: transformers.AutoTokenizer
     optimizer: torch.optim.Optimizer
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
@@ -361,7 +359,8 @@ class FinetuneExperiment(Experiment):
     is_sentence_pair: bool
 
     def __init__(self, args: argparse.Namespace):
-        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair", "bert-base-cased"}
+        assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair", "bert-base-uncased"}
+        self.model_name = args.model_name
         self.args = args
 
         # TODO: support different numbers of labels, depending on the dataset.
@@ -380,7 +379,7 @@ class FinetuneExperiment(Experiment):
             self.tokenizer = None
         else:
             self.model = transformers.AutoModelForSequenceClassification.from_pretrained(
-                args.model_name, num_labels=1)
+                args.model_name, num_labels=1).to(device)
             self.tokenizer = transformers.AutoTokenizer.from_pretrained(
                 args.model_name)
             
@@ -415,19 +414,22 @@ class FinetuneExperiment(Experiment):
             train_dataloader, test_dataloader = load_qqp(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs,
+                tokenizer=self.tokenizer
             )
         elif self.args.ft_dataset_name == 'rotten_tomatoes':
             train_dataloader, test_dataloader = load_rotten_tomatoes(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs,
+                tokenizer=self.tokenizer
             )
         elif self.args.ft_dataset_name == 'sst2':
             train_dataloader, test_dataloader = load_sst2(
                 max_length=self.args.max_length, batch_size=self.args.batch_size,
                 num_examples=self.args.num_examples, drop_last=self.args.drop_last,
-                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs
+                random_seed=self.args.random_seed, lowercase_inputs=self.args.lowercase_inputs,
+                tokenizer=self.tokenizer
             )
         else:
             raise ValueError(f'unrecognized fine-tuning dataset {self.args.ft_dataset_name}')
@@ -463,13 +465,12 @@ class FinetuneExperiment(Experiment):
             sentence_stacked = torch.stack((sentence1, sentence2), axis=1).to(device)
             targets = targets.to(device)
             preds = self.model(sentence_stacked)
-        elif self.model_name == "transformer":
-            sentence, targets = batch
+        else: 
+            # model is a transformer
+            # TODO: does this column always have the name 'label'?
             batch = {k: v.to(device) for k, v in batch.items()}
-            sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
-            preds = self.model(sentence)['??']
-        else:
-            raise ValueError(f'Expected batch of length 2 or 3, got {len(batch)}')
+            targets = batch.pop('label').float()
+            preds = torch.sigmoid(self.model(**batch)['logits']).squeeze()
 
         assert preds.shape == targets.shape
         loss = self._loss_fn(preds, targets)

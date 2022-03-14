@@ -52,7 +52,8 @@ def get_argparser() -> argparse.ArgumentParser:
         help='percent of data to use for train, in (0, 1]')
 
     parser.add_argument('--model_name', type=str, default='elmo_single_sentence', 
-        choices=['elmo_single_sentence', 'elmo_sentence_pair'], help='name of model to use')
+        choices=['elmo_single_sentence', 'elmo_sentence_pair', 'bert-base-uncased'],
+        help='name of model to use')
     parser.add_argument('--rf_dataset_name', type=str, default='quora', 
         choices=['quora', 'mrpc'], help='name of dataset to use for retrofitting')
     parser.add_argument('--ft_dataset_name', type=str, default='qqp', 

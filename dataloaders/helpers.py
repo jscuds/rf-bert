@@ -1,4 +1,4 @@
-from typing import Callable, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import collections
 import logging
@@ -7,6 +7,7 @@ import os
 import datasets
 import numpy as np
 import torch
+import transformers
 
 from allennlp.modules.elmo import batch_to_ids
 from mosestokenizer import MosesTokenizer
@@ -68,7 +69,7 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
         as well as a 'label' column.
     """
     elmo_tokenizer = MosesTokenizer('en', no_escape=True)
-    def text_to_ids(e):
+    def encode_text_to_ids(e: Dict) -> Dict:
         for col in text_columns:
             text = e[col]
             e[col] = elmo_tokenize_and_pad(elmo_tokenizer, text, max_length, lowercase_inputs)
@@ -76,8 +77,25 @@ def prepare_dataset_with_elmo_tokenizer(dataset, text_columns: List[str], max_le
 
     # Caching sometimes causes weird issues with .map(), if you see that then
     # add the load_from_cache_file=False argument below.
-    return dataset.map(text_to_ids, batched=False)
+    return dataset.map(encode_text_to_ids, batched=False)
 
+
+
+def prepare_dataset_with_transformers_tokenizer(
+    dataset: datasets.Dataset, tokenizer: transformers.AutoTokenizer,
+    text_columns: List[str], max_length: int, lowercase_inputs: bool
+    ) -> datasets.Dataset:
+
+    # Caching sometimes causes weird issues with .map(), if you see that then
+    # add the load_from_cache_file=False argument below.
+    def tokenize_func(examples):
+        return tokenizer(
+            *(examples[t] for t in text_columns),
+            truncation=True, max_length=max_length,
+            padding='max_length'
+        )
+    return dataset.map(tokenize_func, batched=True)
+    
 
 def dataloader_from_dataset(
         dataset: datasets.Dataset,
@@ -96,10 +114,9 @@ def dataloader_from_dataset(
           + tuple(torch.tensor(batch[k]).float() for k in label_columns)
         )
     
-    # epochs = 5
     sampler = BatchSampler(
         RandomSampler(dataset, replacement=False),
-        batch_size = batch_size, drop_last = drop_last
+        batch_size=batch_size, drop_last=drop_last
     )
     return DataLoader(dataset,
         collate_fn=collate_fn,
@@ -107,10 +124,9 @@ def dataloader_from_dataset(
         # num_workers=min(8, num_cpus)
     )
 
-
 def load_rotten_tomatoes(
         batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
-        lowercase_inputs: bool = False
+        lowercase_inputs: bool = False, tokenizer: transformers.AutoTokenizer = None
     ) -> Tuple[DataLoader, DataLoader]:
     """Returns tuple of (train_dataloader, test_dataloader)."""
     dataset = datasets.load_dataset('rotten_tomatoes').shuffle(seed=random_seed)
@@ -120,31 +136,47 @@ def load_rotten_tomatoes(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(
-        dataset=dataset, 
-        text_columns=['text'], 
-        max_length=max_length, 
-        lowercase_inputs=lowercase_inputs
-    )
+    if tokenizer is None:
+        logger.info('loading rotten tomatoes with tokenizer set to None, defaulting to ELMO tokenizer')
+        dataset = prepare_dataset_with_elmo_tokenizer(
+            dataset=dataset,
+            text_columns=['text'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
+        train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
+        train_dataloader = dataloader_from_dataset(
+            train_dataset, text_columns=['text'], label_columns=['label'],
+            batch_size=batch_size, shuffle=True, drop_last=drop_last
+        )
+        test_dataloader = dataloader_from_dataset(
+            test_dataset, text_columns=['text'], label_columns=['label'],
+            batch_size=batch_size, shuffle=True, drop_last=drop_last
+        )
+    else:
+        dataset = prepare_dataset_with_transformers_tokenizer(
+            dataset=dataset,
+            tokenizer=tokenizer,
+            text_columns=['text'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
+        train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
+        train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'label'])
+        test_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'label'])
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size)
+        test_dataloader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=batch_size)
     # TODO: support arbitrary tokenizer (for any model)
-    train_dataset, test_dataset = dataset['train'], dataset['test'] # rt also has a 'validation' set
 
     logger.info('Loading Rotten Tomatoes dataset with %d examples', len(train_dataset))
-
-    train_dataloader = dataloader_from_dataset(
-        train_dataset, text_columns=['text'], label_columns=['label'],
-        batch_size=batch_size, shuffle=True, drop_last=drop_last
-    )
-    test_dataloader = dataloader_from_dataset(
-        test_dataset, text_columns=['text'], label_columns=['label'],
-        batch_size=batch_size, shuffle=True, drop_last=drop_last
-    )
     return train_dataloader, test_dataloader
 
 
 def load_sst2(
         batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
-        lowercase_inputs: bool = False
+        lowercase_inputs: bool = False, tokenizer: transformers.AutoTokenizer = None
     ) -> Tuple[DataLoader, DataLoader]:
     dataset = datasets.load_dataset('glue', 'sst2').shuffle(seed=random_seed)
     if num_examples:
@@ -153,12 +185,22 @@ def load_sst2(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(
-        dataset=dataset,
-        text_columns=['sentence'],
-        max_length=max_length,
-        lowercase_inputs=lowercase_inputs
-    )
+    if tokenizer is None:
+        logger.info('loading sst2 with tokenizer set to None, defaulting to ELMO tokenizer')
+        dataset = prepare_dataset_with_elmo_tokenizer(
+            dataset=dataset,
+            text_columns=['sentence'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
+    else:
+        dataset = prepare_dataset_with_transformers_tokenizer(
+            dataset=dataset,
+            tokenizer=tokenizer,
+            text_columns=['sentence'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
     logger.info('Loading SST-2 dataset with %d examples', len(train_dataset))
@@ -176,7 +218,7 @@ def load_sst2(
 
 def load_qqp(
         batch_size: int, max_length: int, drop_last: bool = True, num_examples: int = None, random_seed: int = 42,
-        lowercase_inputs: bool = False
+        lowercase_inputs: bool = False, tokenizer: transformers.AutoTokenizer = None
     ) -> Tuple[DataLoader, DataLoader]:
     dataset = datasets.load_dataset('glue', 'qqp').shuffle(seed=random_seed)
     if num_examples:
@@ -185,12 +227,22 @@ def load_qqp(
         for split in dataset:
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
-    dataset = prepare_dataset_with_elmo_tokenizer(
-        dataset=dataset,
-        text_columns=['question1', 'question2'],
-        max_length=max_length,
-        lowercase_inputs=lowercase_inputs
-    )
+    if tokenizer is None:
+        logger.info('loading qqp with tokenizer set to None, defaulting to ELMO tokenizer')
+        dataset = prepare_dataset_with_elmo_tokenizer(
+            dataset=dataset,
+            text_columns=['question1', 'question2'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
+    else:
+        dataset = prepare_dataset_with_transformers_tokenizer(
+            dataset=dataset,
+            tokenizer=tokenizer,
+            text_columns=['question1', 'question2'],
+            max_length=max_length,
+            lowercase_inputs=lowercase_inputs
+        )
     train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
 
     logger.info('Loading QQP dataset with %d examples', len(train_dataset))

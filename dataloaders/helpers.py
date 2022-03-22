@@ -186,12 +186,21 @@ def load_sst2(
             dataset[split] = datasets.Dataset.from_dict(dataset[split][:num_examples])
 
     if tokenizer is None:
-        logger.info('loading sst2 with tokenizer set to None, defaulting to ELMO tokenizer')
+        logger.info('loading SST-2 with tokenizer set to None, defaulting to ELMO tokenizer')
         dataset = prepare_dataset_with_elmo_tokenizer(
             dataset=dataset,
             text_columns=['sentence'],
             max_length=max_length,
             lowercase_inputs=lowercase_inputs
+        )
+        train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
+        train_dataloader = dataloader_from_dataset(
+            train_dataset, text_columns=['sentence'], label_columns=['label'],
+            batch_size=batch_size, shuffle=True, drop_last=drop_last
+        )
+        test_dataloader = dataloader_from_dataset(
+            test_dataset, text_columns=['sentence'], label_columns=['label'],
+            batch_size=batch_size, shuffle=True, drop_last=drop_last
         )
     else:
         dataset = prepare_dataset_with_transformers_tokenizer(
@@ -201,18 +210,15 @@ def load_sst2(
             max_length=max_length,
             lowercase_inputs=lowercase_inputs
         )
-    train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
+        train_dataset, test_dataset = dataset['train'], dataset['validation'] # 'test' set has no labels, so it's not useful for us
+        train_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'label'])
+        test_dataset.set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'label'])
+        train_dataloader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size)
+        test_dataloader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=batch_size)
 
     logger.info('Loading SST-2 dataset with %d examples', len(train_dataset))
-
-    train_dataloader = dataloader_from_dataset(
-        dataset=train_dataset, text_columns=['sentence'], label_columns=['label'],
-        batch_size=batch_size, shuffle=True, drop_last=drop_last
-    )
-    test_dataloader = dataloader_from_dataset(
-        dataset=test_dataset, text_columns=['sentence'], label_columns=['label'],
-        batch_size=batch_size, shuffle=True, drop_last=drop_last
-    )
     return train_dataloader, test_dataloader
 
 

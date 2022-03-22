@@ -53,7 +53,7 @@ class TestRetrofitLoss:
         a = torch.tensor([[1, 0, 1, 0]], dtype=float)
         b = torch.tensor([[0, 1, 0, 1]], dtype=float)
         assert self.experiment.retrofit_hinge_loss(
-            a, a, b, b, 0, 0
+            a, a, b, b, gamma1=0, gamma2=100, epoch=0
         )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_equal_dist(self):
@@ -64,7 +64,7 @@ class TestRetrofitLoss:
         gamma = 5.0
         epoch = 1
         assert self.experiment.retrofit_hinge_loss(
-            a, b, a, b, gamma, epoch
+            a, b, a, b, gamma1=gamma, gamma2=100, epoch=epoch
         )[0] == gamma #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_best_case_big_margin(self):
@@ -81,7 +81,7 @@ class TestRetrofitLoss:
         gamma = 20.0
         epoch = 1
         assert self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma, epoch
+            a1, a2, b1, b2, gamma1=gamma, gamma2=100, epoch=epoch
         )[0] == 0.0 #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
     
     def test_retrofit_hinge_worst_case(self):
@@ -98,7 +98,7 @@ class TestRetrofitLoss:
         gamma = 10.0
         epoch = 1
         loss = self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma, epoch
+            a1, a2, b1, b2, gamma1=gamma, gamma2=100, epoch=epoch
         )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > gamma
     
@@ -119,6 +119,6 @@ class TestRetrofitLoss:
         gamma = 5.0
         epoch = 1
         loss = self.experiment.retrofit_hinge_loss(
-            a1, a2, b1, b2, gamma, epoch
+            a1, a2, b1, b2, gamma1=gamma, gamma2=100, epoch=epoch
         )[0] #js iterim test adjustment because `retrofit_hinge_loss` now returns a tuple of (hinge_loss, pre_clamp_hinge_loss)
         assert loss > 50

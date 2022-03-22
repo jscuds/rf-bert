@@ -123,6 +123,10 @@ class RetrofitExperiment(Experiment):
     metric_averages: TensorRunningAverages
     wb_table: TableLog
 
+    rf_lambda: float
+    rf_gamma_1: float
+    rf_gamma_2: float
+
     def __init__(self, args: argparse.Namespace):
         assert args.model_name == "elmo_single_sentence" # TODO: Support choice of model via argparse.
         self.args = args
@@ -134,7 +138,8 @@ class RetrofitExperiment(Experiment):
         )
         self.create_optimizer_and_lr_scheduler(args)
         self.rf_lambda = self.args.rf_lambda
-        self.rf_gamma = self.args.rf_gamma
+        self.rf_gamma_1 = self.args.rf_gamma_1
+        self.rf_gamma_2 = self.args.rf_gamma_2
         self.metric_averages = TensorRunningAverages()
         self.metrics = []
         self.wb_table = None
@@ -225,8 +230,8 @@ class RetrofitExperiment(Experiment):
     def retrofit_hinge_loss(self,
             word_rep_pos_1: torch.Tensor, word_rep_pos_2: torch.Tensor,
             word_rep_neg_1: torch.Tensor, word_rep_neg_2: torch.Tensor,
-            gamma: float, epoch: int
-        ) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor,torch.Tensor]:
+            gamma1: float, gamma2: float, epoch: int
+        ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """L_H = sum_{w} [d_1(M w) - \gamma + d_2(M w)]_+
         
         Where d_1 is the distance between w's representations in a paraphrase pair (hopefully
@@ -240,8 +245,13 @@ class RetrofitExperiment(Experiment):
         positive_pair_distance = torch.norm(word_rep_pos_1 - word_rep_pos_2, p=2, dim=1)
         negative_pair_distance = torch.norm(word_rep_neg_1 - word_rep_neg_2, p=2, dim=1) # shape: (batch_size,) if keepdim=False
 
-        loss = positive_pair_distance + gamma - negative_pair_distance
+        loss = positive_pair_distance + gamma1 - negative_pair_distance
         assert loss.shape == (word_rep_pos_1.shape[0],) # ensure dimensions of loss is same as batch size.
+
+        pair_dist_norm_loss = 0.5 * (
+            (positive_pair_distance - gamma2).clamp(min=0) +
+            (negative_pair_distance - gamma2).clamp(min=0)
+        )
         
         # If model is training, create distance lists for creating 4x wandb.plot.histogram() per epoch
         if self.model.training:
@@ -265,7 +275,7 @@ class RetrofitExperiment(Experiment):
                 self._wb_table_add_loss_and_dists(epoch, split, loss, positive_pair_distance, negative_pair_distance)
                 self.wb_table.test_epochs_sampled.append(epoch)            
 
-        return loss.mean(), loss_pre_clamp.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
+        return loss.mean(), loss_pre_clamp.mean(), pair_dist_norm_loss.mean(), positive_pair_distance.mean(), negative_pair_distance.mean()
         
     def _wb_table_add_loss_and_dists(self, epoch: int, split: str, loss: torch.Tensor, 
                                          positive_pair_distance: torch.Tensor, negative_pair_distance: torch.Tensor) -> None:
@@ -316,18 +326,21 @@ class RetrofitExperiment(Experiment):
             self.model(*batch)
         )
         
-        hinge_loss, pre_clamp_hinge_loss, pos_pair_distance, neg_pair_distance = (
+        hinge_loss, pre_clamp_hinge_loss, pair_dist_norm_loss, pos_pair_distance, neg_pair_distance = (
             self.retrofit_hinge_loss(
                 word_rep_pos_1, word_rep_pos_2,
                 word_rep_neg_1, word_rep_neg_2,
-                self.rf_gamma, epoch
+                gamma1=self.rf_gamma_1, gamma2=self.rf_gamma_2, epoch=epoch
             )
         )
         orth_loss = self.orthogonalization_loss(self.M)
-        loss = hinge_loss + self.rf_lambda * orth_loss
+        # TODO argparse for these constants?
+        _alpha = 0.98
+        loss = ((_alpha) * hinge_loss + (1-_alpha) * pair_dist_norm_loss) + self.rf_lambda * orth_loss
         # Compute and store losses and related metrics.
         self.metric_averages.update(f'{metrics_key}/Loss', loss.item())
         self.metric_averages.update(f'{metrics_key}/Hinge_Loss', hinge_loss.item())
+        self.metric_averages.update(f'{metrics_key}/Pair_Dist_Norm_Loss', pair_dist_norm_loss.item())
         self.metric_averages.update(f'{metrics_key}/Pre_Clamp_Hinge_Loss', pre_clamp_hinge_loss.item())
         self.metric_averages.update(f'{metrics_key}/Orthogonalization_Loss', orth_loss.item())
         # Compute and store average distances between word pairs.
@@ -355,8 +368,6 @@ class FinetuneExperiment(Experiment):
     optimizer: torch.optim.Optimizer
     metrics: List[Metric]
     metric_averages: TensorRunningAverages
-
-    is_sentence_pair: bool
 
     def __init__(self, args: argparse.Namespace):
         assert args.model_name in {"elmo_single_sentence", "elmo_sentence_pair", "bert-base-uncased"}
@@ -453,7 +464,6 @@ class FinetuneExperiment(Experiment):
         """
         if self.model_name == "elmo_single_sentence": # single-sentence classification
             assert len(batch) == 2
-            assert not self.is_sentence_pair
             sentence, targets = batch
             sentence, targets = sentence.to(device), targets.to(device) # TODO(js) retrofit_change
             preds = self.model(sentence)

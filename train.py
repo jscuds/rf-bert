@@ -64,8 +64,10 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--rf_lambda', type=float, default=1,
         help='lambda - regularization constant for retrofitting loss')
-    parser.add_argument('--rf_gamma', type=float, default=2,
-        help='gamma - margin constant for retrofitting loss')
+    parser.add_argument('--rf_gamma_1', type=float, default=3,
+        help='gamma - margin constant for retrofitting loss (on pos and neg distance)')
+    parser.add_argument('--rf_gamma_2', type=float, default=10,
+        help='gamma - margin constant for retrofitting loss (on pos distance only)')
     parser.add_argument('--num_table_examples', type=int, default=None,
         help='examples to watch in both train/test sets - will log to W&B Table')
     parser.add_argument('--elmo_dropout', type=float, default=0.0,

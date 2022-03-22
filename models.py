@@ -27,6 +27,7 @@ class ElmoLstmWithTransformation(torch.nn.Module):
         self.M = torch.nn.Parameter(
             torch.eye(embedding_dim, dtype=torch.float32), requires_grad=requires_grad
         )
+        # super().add_module('M', self.M)
         self.register_parameter('M', self.M) # TODO does this do anything?
 
     def forward(self, inputs: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
@@ -170,7 +171,7 @@ class ElmoRetrofit(torch.nn.Module):
                  requires_grad: bool=False, elmo_dropout: float=0, embedding_dim: int=512): # embedding_dim matches ElmoLstm default
         super().__init__()
         self.elmo = Elmo(options_file=options_file, weight_file=weight_file,
-                         num_output_representations=4,
+                         num_output_representations=1,
                          requires_grad=requires_grad, dropout=elmo_dropout)
         
         # Wrap the inner LSTM in an nn.Module that applies a matrix transformation
@@ -205,10 +206,10 @@ class ElmoRetrofit(torch.nn.Module):
         assert pos_token_1.shape == pos_token_2.shape == (batch_size,)
         assert neg_token_1.shape == neg_token_2.shape == (batch_size,)
 
-        pos_sent_1 = self.elmo(pos_sent_1)['elmo_representations'][0] # new shape: [batch_size, 40, 1024]
-        pos_sent_2 = self.elmo(pos_sent_2)['elmo_representations'][1]
-        neg_sent_1 = self.elmo(neg_sent_1)['elmo_representations'][2]
-        neg_sent_2 = self.elmo(neg_sent_2)['elmo_representations'][3]
+        pos_sent_rep_1 = self.elmo(pos_sent_1)['elmo_representations'][0] # new shape: [batch_size, 40, 1024]
+        pos_sent_rep_2 = self.elmo(pos_sent_2)['elmo_representations'][0]
+        neg_sent_rep_1 = self.elmo(neg_sent_1)['elmo_representations'][0]
+        neg_sent_rep_2 = self.elmo(neg_sent_2)['elmo_representations'][0]
 
         # https://stackoverflow.com/questions/66900676/select-specific-indexes-of-3d-pytorch-tensor-using-a-1d-long-tensor-that-represe
         # Using a 1D tensor as an index for 1-dimension of a 3D tensor
@@ -216,11 +217,15 @@ class ElmoRetrofit(torch.nn.Module):
         # equivalent of B = torch.tensor(range(batch_size))
         B = torch.arange(pos_sent_1.shape[0]).type_as(pos_token_1)
 
+        # check that inputs are equal at each token index:
+        # assert torch.equal(pos_sent_1[B, pos_token_1], pos_sent_2[B, pos_token_2])
+        # assert torch.equal(neg_sent_1[B, neg_token_1], neg_sent_2[B, neg_token_2])
+
         # gets word embedding corresponding to [each sentence, token index, embeddings for that token index]
-        word_rep_pos_1 = pos_sent_1[B,pos_token_1,:] # shape: [batch_size, 1024]
-        word_rep_pos_2 = pos_sent_2[B,pos_token_2,:] # shape: [batch_size, 1024]
-        word_rep_neg_1 = neg_sent_1[B,neg_token_1,:] # shape: [batch_size, 1024]
-        word_rep_neg_2 = neg_sent_2[B,neg_token_2,:] # shape: [batch_size, 1024]
+        word_rep_pos_1 = pos_sent_rep_1[B,pos_token_1,:] # shape: [batch_size, 1024]
+        word_rep_pos_2 = pos_sent_rep_2[B,pos_token_2,:] # shape: [batch_size, 1024]
+        word_rep_neg_1 = neg_sent_rep_1[B,neg_token_1,:] # shape: [batch_size, 1024]
+        word_rep_neg_2 = neg_sent_rep_2[B,neg_token_2,:] # shape: [batch_size, 1024]
         assert word_rep_pos_1.shape == word_rep_pos_2.shape == (batch_size,1024)
         assert word_rep_neg_1.shape == word_rep_neg_2.shape == (batch_size,1024)
 

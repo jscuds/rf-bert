@@ -27,7 +27,7 @@ attack_in_parallel = False
 # And I have another model that's fine-tuned after retrofitting:
 # model_path, model_is_retrofitted = 'models/finetune_elmo_single_sentence_2022-02-15-1457/final.pth', True
 
-model_path, model_is_retrofitted = 'models/finetune_elmo_2022-02-17-1226/final.pth', True
+# model_path, model_is_retrofitted = 'models/finetune_elmo_2022-02-17-1226/final.pth', True
 
 class ElmoModelWrapper(textattack.models.wrappers.ModelWrapper):
     tokenizer: MosesTokenizer
@@ -52,7 +52,7 @@ class ElmoModelWrapper(textattack.models.wrappers.ModelWrapper):
         probs = torch.stack([1-probs, probs], dim=-1)
         return probs.cpu().numpy()
 
-def main():
+def main(model_path: str, model_is_retrofitted: bool):
     # Create model and load from weights
     model = ElmoClassifier(
         num_output_representations=1,
@@ -67,12 +67,14 @@ def main():
     model_wrapper = ElmoModelWrapper(model)
 
     # Run attack
-    dataset = HuggingFaceDataset("rotten_tomatoes", split="test")
+    dataset = HuggingFaceDataset("rotten_tomatoes", split="test") # TODO
+    # dataset = HuggingFaceDataset("glue", subset='sst2', split="validation") # JS
     attack = TextFoolerJin2019.build(model_wrapper)
+    attack.goal_function.batch_size = 16
     attack_args = textattack.AttackArgs(
-        num_examples=num_examples, parallel=attack_in_parallel
+        num_examples=num_examples, parallel=attack_in_parallel, disable_stdout=True
     )
     attacker = Attacker(attack, dataset, attack_args=attack_args)
     attacker.attack_dataset()
 
-if __name__ == '__main__': main()
+if __name__ == '__main__': main('models/finetune_elmo_2022-02-17-1226/final.pth', True)
